@@ -1,0 +1,27 @@
+{
+  "name": "julia-wasm",
+  "version": "0.0.1",
+  "description": "Rendering Julia sets in the browser with Rust via WebAssembly",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "julia",
+    "wasm"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "s-js": "^0.4.7",
+    "surplus": "^0.4.3"
+  },
+  "devDependencies": {
+    "@types/text-encoding": "0.0.32",
+    "@types/webassembly-js-api": "0.0.1",
+    "copy-webpack-plugin": "^4.3.1",
+    "surplus-loader": "^0.4.5",
+    "ts-loader": "^3.2.0",
+    "typescript": "^2.6.2"
+  }
+}

@@ -1,0 +1,17 @@
+[package]
+name = "wasm-src"
+version = "0.1.0"
+authors = ["Tim Hambourger <tim.hambourger@gmail.com>"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = { git = "https://github.com/alexcrichton/wasm-bindgen" }
+julia = { path = "./julia" }
+
+[dependencies.num-complex]
+version = "0.1.41"
+default-features = false
+
+[workspace]

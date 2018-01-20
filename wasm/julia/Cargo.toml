@@ -1,0 +1,10 @@
+[package]
+name = "julia"
+version = "0.1.0"
+authors = ["Tim Hambourger <tim.hambourger@gmail.com>"]
+
+# The default feature set for num and/or num-complex pulls in rustc-serialize,
+# which apparently doesn't support the wasm32-unknown-unknown target.
+[dependencies.num-complex]
+version = "0.1.41"
+default-features = false
