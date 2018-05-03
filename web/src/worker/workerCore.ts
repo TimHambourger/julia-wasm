@@ -1,6 +1,7 @@
-import { EscapeTimeConfig, CanvasSize, IChunkUpdateMsg } from '../shared/messages';
+import { ICanvasSize, IEscapeTimeConfig } from '../shared/config';
+import { IChunkUpdateMsg } from '../shared/messages';
 import { ChunkOfWork } from './chunkOfWork';
-import { MemoryPool } from './memoryPool';
+import { MemoryPool } from '../shared/memoryPool';
 import { EscapeTimeRunner } from './escapeTimeRunner';
 
 export class WorkerCore {
@@ -16,10 +17,10 @@ export class WorkerCore {
         this.resumeTimeout = null;
     }
 
-    run(config : EscapeTimeConfig, canvas : CanvasSize) {
+    run(config : IEscapeTimeConfig, canvas : ICanvasSize) {
         this.runner && this.runner.dispose();
         if (this.resumeTimeout !== null) clearTimeout(this.resumeTimeout);
-        this.runner = new EscapeTimeRunner(config, this.chunk, canvas);
+        this.runner = new EscapeTimeRunner(config, canvas, this.chunk);
         this.resumeTimeout = setTimeout(() => this.resume(), 0);
     }
 
@@ -31,7 +32,7 @@ export class WorkerCore {
         while (this.runner.advance() && performance.now() - startTime < this.pauseInterval) {
             const
                 z = this.runner.loadChunk(),
-                data = this.pool.emit(),
+                data = this.pool.acquire(),
                 view = new Uint16Array(data);
 
             for (let i = 0; i < view.length && i < this.chunk.view.length; i++) {
@@ -40,7 +41,10 @@ export class WorkerCore {
 
             const msg : IChunkUpdateMsg = {
                 type: 'chunk-update',
-                update: { z, data }
+                z,
+                data,
+                runner: this.runner.config,
+                canvas: this.runner.canvas
             };
             postMessage(msg, [data]);
         }

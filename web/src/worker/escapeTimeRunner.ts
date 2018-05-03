@@ -1,23 +1,24 @@
 import { Complex, EscapeTimeAPI } from './wasm/julia-wasm';
-import { IComplex, EscapeTimeConfig, CanvasSize } from '../shared/messages';
+import { IComplex } from '../shared/IComplex';
+import { IEscapeTimeConfig, ICanvasSize } from '../shared/config';
 import { ChunkOfWork } from './chunkOfWork';
 
 export class EscapeTimeRunner {
     private readonly api : EscapeTimeAPI;
 
-    private canvasSize : CanvasSize;
     private z : IComplex;
     private step : IComplex;
 
     constructor(
-        { c, maxIter, escapeRadius } : EscapeTimeConfig,
+        public readonly config : IEscapeTimeConfig,
+        // TODO: Support panning, zooming...
+        public readonly canvas : ICanvasSize,
         private readonly chunk : ChunkOfWork,
-        initCanvasSize : CanvasSize
     ) {
+        const { c, maxIter, escapeRadius } = config;
         this.api = EscapeTimeAPI.new(Complex.new(c.re, c.im), maxIter, escapeRadius);
-        this.canvasSize = initCanvasSize;
-        this.step = computeStep(initCanvasSize, chunk);
-        this.z = initialZ(initCanvasSize, this.step);
+        this.step = computeStep(canvas, chunk);
+        this.z = initialZ(canvas, this.step);
     }
 
     // Load the next chunk of data into the buffer and return the starting z
@@ -26,7 +27,9 @@ export class EscapeTimeRunner {
         this.api.load(
             this.chunk.buffer,
             this.chunk.width,
-            Complex.new(this.z.re, this.z.im),
+            // Add a half step so we're calculating from the center of each logical pixel,
+            // rather than from the upper left corner.
+            Complex.new(this.z.re + this.step.re / 2, this.z.im + this.step.im / 2),
             Complex.new(this.step.re, this.step.im)
         );
         return this.z;
@@ -35,21 +38,19 @@ export class EscapeTimeRunner {
     // Try advancing to the next chunk.
     // Returns true if successful and false if we've exhausted the canvas.
     advance() {
-        const next = nextZ(this.z, this.step, this.canvasSize, this.chunk);
+        const next = nextZ(this.z, this.step, this.canvas, this.chunk);
         if (!next) return false;
         this.z = next;
         return true;
     }
 
     hasRemaining() {
-        return !!nextZ(this.z, this.step, this.canvasSize, this.chunk);
+        return !!nextZ(this.z, this.step, this.canvas, this.chunk);
     }
 
     dispose() {
         this.api.free();
     }
-
-    // TODO: Support panning, zooming...
 }
 
 function computeStep(
@@ -60,7 +61,7 @@ function computeStep(
         imBottom,
         chunksWidth,
         chunksHeight
-    } : CanvasSize,
+    } : ICanvasSize,
     { width, height } : ChunkOfWork
 ) : IComplex {
     // Load output buffer from left to right and from top to bottom
@@ -74,13 +75,12 @@ function computeStep(
 
 // TODO: Maybe experiment with starting in center of canvas and spiraling out...
 function initialZ(
-    { reLeft, imTop } : CanvasSize,
+    { reLeft, imTop } : ICanvasSize,
     step : IComplex
 ) : IComplex {
-    // Add a half step so we're calculating from the center of each logical pixel.
     return {
-        re: reLeft + step.re / 2,
-        im: imTop + step.im / 2
+        re: reLeft,
+        im: imTop
     };
 }
 
@@ -93,7 +93,7 @@ function nextZ(
         reRight,
         imTop,
         imBottom
-    } : CanvasSize,
+    } : ICanvasSize,
     chunk : ChunkOfWork
 ) {
     const

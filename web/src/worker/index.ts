@@ -1,10 +1,11 @@
-import { WorkerConfig, MessageToWorker, IRunnerInitMsg, IStartupFailureMsg } from '../shared/messages';
+import { IWorkerConfig } from '../shared/config';
+import { MessageToWorker, IRunnerInitMsg, IStartupFailureMsg } from '../shared/messages';
 import { instantiate, Buffer } from './wasm/julia-wasm';
-import { MemoryPool } from './memoryPool';
+import { MemoryPool } from '../shared/memoryPool';
 import { ChunkOfWork } from './chunkOfWork';
 import { WorkerCore } from './workerCore';
 
-let resolveWorkerConfig : (config : WorkerConfig) => void,
+let resolveWorkerConfig : (config : IWorkerConfig) => void,
     pool = null as MemoryPool | null,
     workerCore = null as WorkerCore | null,
     earlyRunnerInit = null as IRunnerInitMsg | null;
@@ -17,7 +18,7 @@ const
     initWasm = fetch('/dist/julia-wasm.wasm')
         .then(resp => resp.arrayBuffer())
         .then(bytes => instantiate(bytes, {})),
-    getWorkerSpec = new Promise<WorkerConfig>(resolve => resolveWorkerConfig = resolve),
+    getWorkerSpec = new Promise<IWorkerConfig>(resolve => resolveWorkerConfig = resolve),
     initWorkerCore = (async () => {
         const
             juliaWasm = await initWasm,
@@ -33,7 +34,7 @@ const
 
         // Times 2 to convert from u16 to u8
         pool = new MemoryPool(bufferSize * 2);
-        pool.absorbAll(earlyBuffers);
+        pool.pushAll(earlyBuffers);
         while (earlyBuffers.pop()) {}
 
         workerCore = new WorkerCore(chunk, pauseInterval, pool);
@@ -67,7 +68,7 @@ onmessage = ev => {
         if (data.buffers) {
             if (pool) {
                 // If pool is already init'ed, go straight there...
-                pool.absorbAll(data.buffers);
+                pool.pushAll(data.buffers);
             } else {
                 // Otherwise save up for once init complete
                 for (let i = 0; i < data.buffers.length; i++) {

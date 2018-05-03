@@ -3,12 +3,13 @@
         "module": "commonjs",
         "strict": true,
         "jsx": "preserve",
+        "jsxFactory": "Surplus",
         "target": "es6",
         "sourceMap": true,
         "lib": ["dom", "es6", "scripthost", "webworker"]
     },
     "files": [
-        "src/main/index.ts",
-        "src/worker/index.ts"
+        "./src/main/index.tsx",
+        "./src/worker/index.ts"
     ]
 }

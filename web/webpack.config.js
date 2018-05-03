@@ -17,12 +17,13 @@ const
 
 module.exports = {
     entry: {
-        main: path.resolve(MAIN_SRC, './index.ts'),
+        main: path.resolve(MAIN_SRC, './index.tsx'),
         worker: path.resolve(WORKER_SRC, './index.ts')
     },
     output: {
         // TODO: Get path vs filename working??
-        filename: path.resolve(DIST, './[name].js')
+        path: DIST,
+        filename: '[name].js'
     },
     resolve: {
         extensions: ['.ts', '.tsx', '.js']
@@ -72,7 +73,7 @@ module.exports = {
 
     plugins: [
         new CopyWebpackPlugin([
-            { from: './web-src/worker/wasm/julia-wasm.wasm', to: DIST }
+            { from: './src/worker/wasm/julia-wasm.wasm' }
         ])
     ]
 };

@@ -1,54 +1,19 @@
-export interface IComplex {
-    re : number;
-    im : number;
-}
-
-export interface WorkerConfig {
-    // Sizes in logical pixels
-    // Determines size of chunks that worker sends back to main thread
-    chunkSize : {
-        height : number,
-        width : number
-    },
-    // Worker pauses periodically to give main thread a chance to invalidate the current runner
-    // This is the interval for those pauses in ms.
-    pauseInterval : number;
-}
-
-export interface EscapeTimeConfig {
-    c : IComplex;
-    // 0 to 65535
-    maxIter : number;
-    escapeRadius : number;
-}
-
-export interface CanvasSize {
-    // We're agnostic to whether axes go from low to high or vice versa.
-    // Our invariants are that the real axis is horizontal, the imaginary
-    // axis is vertical, and we'll fill output buffers from left to right
-    // and from top to bottom.
-    reLeft : number;
-    reRight : number;
-    imTop : number;
-    imBottom : number;
-    // Sizes measured in chunks of work
-    chunksWidth : number;
-    chunksHeight : number;
-}
+import { IComplex } from './IComplex';
+import { ICanvasSize, IEscapeTimeConfig, IWorkerConfig } from './config';
 
 // Initialize the worker.
 // Expect the UI to pass this message type only on worker construction.
 export interface IWorkerInitMsg {
     type : 'worker-init';
-    config: WorkerConfig;
+    config: IWorkerConfig;
 }
 
 // Start or replace the runner.
 // Expect the UI to pass this on worker construction and again when runner params change.
 export interface IRunnerInitMsg {
     type : 'runner-init';
-    runner : EscapeTimeConfig;
-    canvas : CanvasSize;
+    runner : IEscapeTimeConfig;
+    canvas : ICanvasSize;
     buffers? : ArrayBuffer[];
 }
 
@@ -57,7 +22,7 @@ export interface IRunnerInitMsg {
 // TODO: Strategy for communicating which portions of the canvas need updates.
 export interface ICanvasUpdateMsg {
     type : 'canvas-update';
-    canvas : CanvasSize;
+    canvas : ICanvasSize;
     buffers? : ArrayBuffer[];
 }
 
@@ -75,7 +40,10 @@ export interface IStartupFailureMsg {
 
 export interface IChunkUpdateMsg {
     type : 'chunk-update';
-    update : ChunkUpdate;
+    z : IComplex;
+    data : ArrayBuffer;
+    runner : IEscapeTimeConfig;
+    canvas : ICanvasSize;
 }
 
 export type MessageToUI = IStartupFailureMsg | IChunkUpdateMsg;
