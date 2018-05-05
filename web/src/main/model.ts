@@ -55,18 +55,33 @@ export function App() {
             canvas.chunksHeight();
 
             const data = new DataBundle<Uint16Array>();
-            // Re-use buffers when constructing a new data bundle
+
+            // Recycle buffers when constructing a new data bundle
             S.cleanup(() => data.crack().forEach(chunk => {
-                escapeTimeDataPool.push(chunk.buffer);
+                chunk && escapeTimeDataPool.push(chunk.buffer);
             }));
+
+            // Also recycle buffers if a chunk is updated with a new buffer or set to null
+            data.map<Uint16Array | null>((curr, prev) => {
+                if (prev && curr !== prev) escapeTimeDataPool.push(prev.buffer);
+                return curr;
+            });
+
             return data;
         }),
         colorizer = S.value(shadeDark({ r: 255, g: 0, b: 0 })),
         imageData = S(() => {
-            const data = escapeTimeData().map<ImageData>((chunk, prevImage) => {
+            const data = escapeTimeData().map<ImageData | null>((chunk, prevImage) => {
+                if (!chunk) {
+                    // Recycle previous image if chunk is being set to null
+                    if (prevImage) imageDataPool.push(prevImage.data.buffer);
+                    return null;
+                }
+
                 const
                     _colorizer = colorizer(),
                     maxIter = escapeTime.maxIter(),
+                    // Modify previous image in place if we have one, otherwise acquire one from the pool
                     imageChunk = prevImage ? prevImage.data : new Uint8ClampedArray(imageDataPool.acquire());
 
                 for (let i = 0; i * 4 < chunk.length && i < imageChunk.length; i += 4) {
@@ -79,10 +94,12 @@ export function App() {
 
                 return new ImageData(imageChunk, ChunkPixelSize.width, ChunkPixelSize.height);
             });
-            // Re-use buffers when constructing a new mapped bundle
+
+            // Recycle buffers when constructing a new mapped bundle
             S.cleanup(() => data.crack().forEach(chunk => {
-                imageDataPool.push(chunk.data.buffer);
+                chunk && imageDataPool.push(chunk.data.buffer);
             }));
+
             return data;
         });
 

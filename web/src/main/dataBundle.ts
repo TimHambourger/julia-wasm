@@ -6,11 +6,11 @@ export interface IBundle<T> {
     /**
      * Get a function that returns the value currently held at the given complex coordinate.
      */
-    get(z : IComplex) : () => T | null;
+    get(z : IComplex) : () => T;
     /**
      * Produce a new bundle by applying a function to each complex coordinate of the current bundle.
      */
-    map<U>(fn : (data : T, prev : U | null, z : IComplex) => U) : IBundle<U>;
+    map<U>(fn : (data : T, prev : U | undefined, z : IComplex) => U) : IBundle<U>;
     /**
      * "Crack" the bundle by returning all data currently held within it.
      * Useful for, e.g., reclaiming memory.
@@ -19,21 +19,19 @@ export interface IBundle<T> {
 }
 
 abstract class Bundle<T> implements IBundle<T> {
-    abstract get(z : IComplex) : () => T | null;
-    protected abstract currentSlots() : (() => T | null)[];
+    abstract get(z : IComplex) : () => T;
+    protected abstract currentSlots() : (() => T)[];
 
-    map<U>(fn : (data : T, prev : U | null, z : IComplex) => U) : IBundle<U> {
+    map<U>(fn : (data : T, prev : U | undefined, z : IComplex) => U) : IBundle<U> {
         return new MappedBundle(this, fn);
     }
 
     crack() {
-        return this.currentSlots().map(slot => slot())
-            .filter(s => s !== null)
-            .map(s => s!);
+        return this.currentSlots().map(slot => slot());
     }
 }
 
-export class DataBundle<T> extends Bundle<T> {
+export class DataBundle<T> extends Bundle<T | null> {
     private readonly chunks : Map<string, DataSignal<T | null>>;
 
     constructor() {
@@ -58,7 +56,7 @@ export class DataBundle<T> extends Bundle<T> {
 
 interface MappedBundleChunk<T> {
     dispose : () => void;
-    value : () => T | null;
+    value : () => T;
 }
 
 export class MappedBundle<T, U> extends Bundle<U> {
@@ -66,7 +64,7 @@ export class MappedBundle<T, U> extends Bundle<U> {
 
     constructor(
         private readonly original : IBundle<T>,
-        private readonly mapFn : (data : T, prev : U | null, z : IComplex) => U
+        private readonly mapFn : (data : T, prev : U | undefined, z : IComplex) => U
     ) {
         super();
         this.chunks = new Map<string, MappedBundleChunk<U>>();
@@ -83,12 +81,14 @@ export class MappedBundle<T, U> extends Bundle<U> {
         const key = zKey(z);
         let chunk = this.chunks.get(key);
         if (!chunk) {
-            let dispose : () => void = undefined!;
+            let dispose! : () => void;
             const
                 upstream = this.original.get(z),
                 value = S.root(_dispose => {
                     dispose = _dispose;
-                    return S(prev => upstream() === null ? null : this.mapFn(upstream()!, prev, z), null as U | null);
+                    // ! operator on the seed value is apparently needed to get S to type this as
+                    // return () => U instead of () => U | undefined. But I think () => U is accurate.
+                    return S<U>(prev => this.mapFn(upstream(), prev, z), undefined!);
                 });
             chunk = { dispose, value };
             this.chunks.set(key, chunk);
@@ -97,7 +97,7 @@ export class MappedBundle<T, U> extends Bundle<U> {
     }
 
     protected currentSlots() {
-        const slots = [] as (() => U | null)[];
+        const slots = [] as (() => U)[];
         this.chunks.forEach(c => slots.push(c.value));
         return slots;
     }
