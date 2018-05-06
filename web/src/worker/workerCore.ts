@@ -29,9 +29,9 @@ export class WorkerCore {
     private resume() {
         if (!this.runner) return;
         const startTime = performance.now();
-        while (this.runner.advance() && performance.now() - startTime < this.pauseInterval) {
+        while (this.runner.hasNext() && performance.now() - startTime < this.pauseInterval) {
             const
-                z = this.runner.loadChunk(),
+                z = this.runner.loadNext(),
                 data = this.pool.acquire(),
                 view = new Uint16Array(data);
 
@@ -49,7 +49,7 @@ export class WorkerCore {
             postMessage(msg, [data]);
         }
 
-        if (this.runner.hasRemaining()) {
+        if (this.runner.hasNext()) {
             setTimeout(() => this.resume(), 0);
         }
     }

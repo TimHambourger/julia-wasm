@@ -1,51 +1,41 @@
-#![feature(proc_macro)]
+#![feature(proc_macro, wasm_custom_section, wasm_import_module)]
 
 extern crate julia;
 extern crate num_complex;
 extern crate wasm_bindgen;
 
 use julia::EscapeTime;
-use num_complex::{Complex32, Complex as RustComplex};
-use std::mem::size_of;
+use num_complex::Complex;
 use wasm_bindgen::prelude::*;
 
+#[wasm_bindgen]
+pub struct Buffer(Vec<u16>);
 
-wasm_bindgen! {
-    pub struct Complex(Complex32);
+#[wasm_bindgen]
+pub struct EscapeTimeAPI(EscapeTime);
 
-    // wasm-bindgen doesn't currently support Vec's or slices.
-    // So add a wrapper type for negotiating these.
-    pub struct Buffer(Vec<u16>);
-
-    pub struct EscapeTimeAPI(EscapeTime);
-
-    impl Complex {
-        pub fn new(re : f32, im : f32) -> Complex {
-            Complex(RustComplex::new(re, im))
+#[wasm_bindgen]
+impl Buffer {
+    pub fn new(size : usize) -> Buffer {
+        let mut v = Vec::with_capacity(size);
+        for _ in 0..size {
+            v.push(0);
         }
+        Buffer(v)
     }
 
-    impl Buffer {
-        pub fn new(size : usize) -> Buffer {
-            let mut v = Vec::with_capacity(size);
-            for _ in 0..size {
-                v.push(0);
-            }
-            Buffer(v)
-        }
+    pub fn as_ptr(&self) -> *const u16 {
+        self.0.as_ptr()
+    }
+}
 
-        pub fn as_ptr(&self) -> *const u16 {
-            self.0.as_ptr()
-        }
+#[wasm_bindgen]
+impl EscapeTimeAPI {
+    pub fn new(c_re : f32, c_im : f32, max_iter : u16, escape_radius : f32) -> EscapeTimeAPI {
+        EscapeTimeAPI(EscapeTime::new(Complex::new(c_re, c_im), max_iter, escape_radius))
     }
 
-    impl EscapeTimeAPI {
-        pub fn new(c : Complex, max_iter : u16, escape_radius : f32) -> EscapeTimeAPI {
-            EscapeTimeAPI(EscapeTime::new(c.0, max_iter, escape_radius))
-        }
-
-        pub fn load(&self, output : &mut Buffer, width : usize, init : Complex, step : Complex) {
-            self.0.load(&mut output.0, width, init.0, step.0);
-        }
+    pub fn load(&self, output : &mut Buffer, width : usize, init_re : f32, init_im : f32, step_re : f32, step_im : f32) {
+        self.0.load(&mut output.0, width, Complex::new(init_re, init_im), Complex::new(step_re, step_im));
     }
 }

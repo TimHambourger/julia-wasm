@@ -23,20 +23,24 @@ export class EscapeTimeRunner {
 
     // Load the next chunk of data into the buffer and return the starting z
     // value (upper left corner) for the chunk just loaded.
-    loadChunk() {
+    loadNext() {
         this.api.load(
             this.chunk.buffer,
             this.chunk.width,
             // Add a half step so we're calculating from the center of each logical pixel,
             // rather than from the upper left corner.
-            Complex.new(this.z.re + this.step.re / 2, this.z.im + this.step.im / 2),
-            Complex.new(this.step.re, this.step.im)
+            this.z.re + this.step.re / 2,
+            this.z.im + this.step.im / 2,
+            this.step.re,
+            this.step.im
         );
         return this.z;
     }
 
-    // Try advancing to the next chunk.
-    // Returns true if successful and false if we've exhausted the canvas.
+    /**
+     * Try advancing to the next chunk.
+     * Returns true if successful and false if we've exhausted the canvas.
+     */
     advance() {
         const next = nextZ(this.z, this.step, this.canvas, this.chunk);
         if (!next) return false;
@@ -44,7 +48,7 @@ export class EscapeTimeRunner {
         return true;
     }
 
-    hasRemaining() {
+    hasNext() {
         return !!nextZ(this.z, this.step, this.canvas, this.chunk);
     }
 
@@ -113,8 +117,9 @@ function nextZ(
         return null;
     }
 
-    return {
-        re: nextRe,
-        im: nextIm
-    };
+    // Modify the passed in z in place to cut down on allocations
+    z.re = nextRe;
+    z.im = nextIm;
+
+    return z;
 }

@@ -17,15 +17,6 @@ export interface IRunnerInitMsg {
     buffers? : ArrayBuffer[];
 }
 
-// Update canvas positioning or size.
-// This is how the UI pans and zooms.
-// TODO: Strategy for communicating which portions of the canvas need updates.
-export interface ICanvasUpdateMsg {
-    type : 'canvas-update';
-    canvas : ICanvasSize;
-    buffers? : ArrayBuffer[];
-}
-
 export type MessageToWorker = IWorkerInitMsg | IRunnerInitMsg | ICanvasUpdateMsg;
 
 export interface ChunkUpdate {
