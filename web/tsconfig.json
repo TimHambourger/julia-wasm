@@ -1,8 +1,17 @@
 {
     "compilerOptions": {
-        "module": "commonjs",
+        // esnext so that import/export/import(...) are preserved by typescript and handled by webpack
+        // Dynamic import(...) is the big one. Need typescript to pass that to webpack unchanged so
+        // webpack can load our wasm.
+        "module": "esnext",
+        // B/c we're using esnext, need to explicitly set moduleResolution to node so we can find
+        // dependencies in our node_modules directory
+        "moduleResolution": "node",
         "strict": true,
+        // Pass jsx unchanged to the surplus-loader. Otherwise the default is for typescript to compile
+        // the jsx itself.
         "jsx": "preserve",
+        // Setting jsxFactory to Surplus means typescript won't strip our Surplus import from jsx files.
         "jsxFactory": "Surplus",
         "target": "es6",
         "sourceMap": true,

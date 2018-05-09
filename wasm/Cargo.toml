@@ -10,8 +10,17 @@ crate-type = ["cdylib"]
 wasm-bindgen = "0.2"
 julia = { path = "./julia" }
 
+[dependencies.num]
+version = "0.1"
+# The default feature set for num pulls in rustc-serialize, which apparently doesn't
+# support the wasm32-unknown-unknown target.
+default-features = false
+# Also can't add the "complex" feature here, b/c that brings in num-complex with its
+# default features, which also include rustc-serialize. So we isntead reference
+# num-complex directly.
+
 [dependencies.num-complex]
-version = "0.1.41"
+version = "0.1"
 default-features = false
 
 [workspace]

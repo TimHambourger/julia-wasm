@@ -1,47 +1,38 @@
-import { IWorkerConfig } from '../shared/config';
-import { MessageToWorker, IRunnerInitMsg, IStartupFailureMsg } from '../shared/messages';
-import { instantiate, Buffer } from './wasm/julia-wasm';
+import { MessageToWorker, IWorkerInitMsg, IRunParamsUpdateMsg, IStartupFailureMsg } from '../shared/messages';
 import { MemoryPool } from '../shared/memoryPool';
-import { ChunkOfWork } from './chunkOfWork';
-import { WorkerCore } from './workerCore';
+// IMPORTANT: Only importing the WorkerCoreType synchronously.
+// This is a type-only import that will get removed by typescript before processing by webpack.
+// We import that the actual WorkerCore class constructor via a dynamic import below.
+// This is b/c currently webpack can only import wasm in dependency graphs rooted in a dynamic import.
+import { WorkerCoreType } from './workerCore';
 
-let resolveWorkerConfig : (config : IWorkerConfig) => void,
-    pool = null as MemoryPool | null,
-    workerCore = null as WorkerCore | null,
-    earlyRunnerInit = null as IRunnerInitMsg | null;
+let resolveWorkerInitMsg = null as ((msg : IWorkerInitMsg) => void) | null,
+    resolveEnsureRunParams = null as (() => void) | null,
+    initialRunParams = null as IRunParamsUpdateMsg | null,
+    workerCore = null as WorkerCoreType | null;
 
 // Put bootstrapping code behind Promises.
 // The goal is to get enough info to construct a WorkerCore, which then
 // takes over processing.
 const
-    earlyBuffers = [] as ArrayBuffer[],
-    initWasm = fetch('/dist/julia-wasm.wasm')
-        .then(resp => resp.arrayBuffer())
-        .then(bytes => instantiate(bytes, {})),
-    getWorkerSpec = new Promise<IWorkerConfig>(resolve => resolveWorkerConfig = resolve),
+    getWorkerInitMsg = new Promise<IWorkerInitMsg>(resolve => resolveWorkerInitMsg = resolve),
+    ensureRunParams = new Promise<void>(resolve => resolveEnsureRunParams = resolve),
+    // Import the workerCore module async/dynamically. This is handle by webpack.
+    importWorkerCore = import(/* webpackChunkName: "workerCore" */ './workerCore'),
     initWorkerCore = (async () => {
         const
-            juliaWasm = await initWasm,
-            { chunkSize: { height, width }, pauseInterval } = await getWorkerSpec,
-            bufferSize = height * width,
-            buffer = Buffer.new(bufferSize),
-            chunk : ChunkOfWork = {
-                buffer,
-                view: new Uint16Array(juliaWasm.extra.memory.buffer, buffer.as_ptr(), bufferSize),
-                width,
-                height
-            };
+            WorkerCore = (await importWorkerCore).WorkerCore,
+            initMsg = await getWorkerInitMsg;
 
-        // Times 2 to convert from u16 to u8
-        pool = new MemoryPool(bufferSize * 2);
-        pool.pushAll(earlyBuffers);
-        while (earlyBuffers.pop()) {}
+        await ensureRunParams;
 
-        workerCore = new WorkerCore(chunk, pauseInterval, pool);
-        if (earlyRunnerInit) {
-            workerCore.run(earlyRunnerInit.runner, earlyRunnerInit.canvas);
-        }
-        earlyRunnerInit = null;
+        workerCore = new WorkerCore(
+            initMsg.worker,
+            initialRunParams!.escapeTime,
+            initialRunParams!.canvas,
+            initialRunParams!.buffers
+        );
+        initialRunParams = null;
     })();
 
 initWorkerCore.catch(err => {
@@ -59,34 +50,19 @@ initWorkerCore.catch(err => {
 onmessage = ev => {
     const data = ev.data as MessageToWorker;
     if (data.type === 'worker-init') {
-        resolveWorkerConfig(data.config);
-        return;
-    }
-
-    if (data.type === 'runner-init' || data.type === 'canvas-update') {
-        // Absorb any returning buffers...
-        if (data.buffers) {
-            if (pool) {
-                // If pool is already init'ed, go straight there...
-                pool.pushAll(data.buffers);
-            } else {
-                // Otherwise save up for once init complete
-                for (let i = 0; i < data.buffers.length; i++) {
-                    earlyBuffers.push(data.buffers[i]);
-                }
+        if (resolveWorkerInitMsg) {
+            resolveWorkerInitMsg(data);
+            resolveWorkerInitMsg = null;
+        }
+    } else if (data.type === 'run-params-update') {
+        if (workerCore) {
+            workerCore.update(data.escapeTime, data.canvas, data.buffers);
+        } else {
+            initialRunParams = data;
+            if (resolveEnsureRunParams) {
+                resolveEnsureRunParams();
+                resolveEnsureRunParams = null;
             }
         }
     }
-
-    if (data.type === 'runner-init') {
-        if (workerCore) {
-            // If workerCore already init'ed, go straight there...
-            workerCore.run(data.runner, data.canvas);
-        } else {
-            earlyRunnerInit = data;
-        }
-        return;
-    }
-
-    // TODO: Handle ICanvasUpdate...
 };

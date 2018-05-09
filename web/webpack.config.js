@@ -1,6 +1,7 @@
 const
     path = require('path'),
-    CopyWebpackPlugin = require('copy-webpack-plugin');
+    HtmlWebpackPlugin = require('html-webpack-plugin'),
+    CleanWebpackPlugin = require('clean-webpack-plugin');
 
 // TODO: Whether to try to split into two tsconfig.json's...
 // There's complexity on both the webpack and vscode side.
@@ -21,22 +22,24 @@ module.exports = {
         worker: path.resolve(WORKER_SRC, './index.ts')
     },
     output: {
-        // TODO: Get path vs filename working??
         path: DIST,
-        filename: '[name].js'
+        filename: 'js/[name].[chunkhash].js',
+        globalObject: 'this'
     },
     resolve: {
-        extensions: ['.ts', '.tsx', '.js']
+        extensions: ['.ts', '.tsx', '.js', '.wasm']
     },
 
-    devtool: "eval",
+    devtool: "sourcemap",
+
+    mode: "development",
 
     module: {
         rules: [
             {
                 test: /\.tsx?$/,
                 loader: 'surplus-loader!ts-loader'
-            }
+            },
             /*
             {
                 test: /\.tsx?$/,
@@ -72,8 +75,14 @@ module.exports = {
     },
 
     plugins: [
-        new CopyWebpackPlugin([
-            { from: './src/worker/wasm/julia-wasm.wasm' }
-        ])
+        new CleanWebpackPlugin(DIST, {
+            // Need to explicitly deleting files outside of webpack root, since our dist folder exists outside of webpack root
+            allowExternal: true
+        }),
+        new HtmlWebpackPlugin({
+            template: 'src/index.html',
+            // Don't automatically inject script tags for our entries. We'll do this manually in our template.
+            inject: false
+        })
     ]
 };

@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<head>
+    <title>Julia WASM!</title>
+</head>
+<body>
+    <div id="app"></div>
+    <script>
+        window.WORKER_URL = <%= JSON.stringify(htmlWebpackPlugin.files.chunks.worker.entry) %>;
+    </script>
+    <script src="<%= htmlWebpackPlugin.files.chunks.main.entry %>"></script>
+</body>

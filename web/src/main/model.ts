@@ -1,7 +1,7 @@
 import S from 's-js';
 import { MemoryPool } from '../shared/memoryPool';
-import { ICanvasSize, IEscapeTimeConfig, IWorkerConfig } from '../shared/config';
-import { IRunnerInitMsg, IWorkerInitMsg, MessageToUI } from '../shared/messages';
+import { ICanvasConfig, IEscapeTimeConfig, IWorkerConfig } from '../shared/config';
+import { IRunParamsUpdateMsg, IWorkerInitMsg, MessageToMain } from '../shared/messages';
 import { DataBundle } from './dataBundle';
 import { shadeDark, shadeLight } from './colorizers';
 
@@ -10,25 +10,27 @@ import { shadeDark, shadeLight } from './colorizers';
  * Influences the size of the data buffers that get shuttled back and forth
  * to the worker thread and populated via WASM.
  */
-export const ChunkPixelSize = {
-    height: 25,
-    width: 25
+export const ChunkSize = {
+    heightPx: 32,
+    widthPx: 32
 };
 
 export type App = ReturnType<typeof App>;
-export function App() {
+export function App(workerUrl : string) {
     const
         canvas = {
-            reLeft: S.value(-1.5),
-            // reRight - reLeft
-            deltaRe: S.value(3),
-            imBottom: S.value(-1.5),
-            // imTop - imBottom
-            deltaIm: S.value(3),
             // height of canvas in chunks
-            chunksWidth: S.value(16),
+            canvasWidthChunks: S.value(16),
             // width of canvas in chunks
-            chunksHeight: S.value(16)
+            canvasHeightChunks: S.value(16),
+            topLeft: {
+                re: S.value(-2),
+                im: S.value(2),
+            },
+            bottomRight: {
+                re: S.value(2),
+                im: S.value(-2)
+            }
         },
         escapeTime = {
             c: {
@@ -39,9 +41,9 @@ export function App() {
             escapeRadius: S.value(2)
         },
         // EscapeTime data is 2 bytes per logical pixel
-        escapeTimeDataPool = new MemoryPool(ChunkPixelSize.width * ChunkPixelSize.height * 2),
+        escapeTimeDataPool = new MemoryPool(ChunkSize.widthPx * ChunkSize.heightPx * 2),
         // ImageData is 4 bytes per logical pixel
-        imageDataPool = new MemoryPool(ChunkPixelSize.width * ChunkPixelSize.height * 4),
+        imageDataPool = new MemoryPool(ChunkSize.widthPx * ChunkSize.heightPx * 4),
         escapeTimeData = S(() => {
             // Rebuild DataBundle if any of the following changes...
             // Also, Adam needs to add the array signature for S.on to the d.ts!!
@@ -49,10 +51,13 @@ export function App() {
             escapeTime.c.im();
             escapeTime.maxIter();
             escapeTime.escapeRadius();
-            canvas.deltaRe();
-            canvas.deltaIm();
-            canvas.chunksWidth();
-            canvas.chunksHeight();
+            // TODO: Caching for panning
+            canvas.topLeft.re();
+            canvas.topLeft.im();
+            canvas.bottomRight.re();
+            canvas.bottomRight.im();
+            canvas.canvasWidthChunks();
+            canvas.canvasHeightChunks();
 
             const data = new DataBundle<Uint16Array>();
 
@@ -92,7 +97,7 @@ export function App() {
                     imageChunk[i + 3] = 255;
                 }
 
-                return new ImageData(imageChunk, ChunkPixelSize.width, ChunkPixelSize.height);
+                return new ImageData(imageChunk, ChunkSize.widthPx, ChunkSize.heightPx);
             });
 
             // Recycle buffers when constructing a new mapped bundle
@@ -103,43 +108,45 @@ export function App() {
             return data;
         });
 
-    const worker = new Worker((window as any).WORKER_URL);
+    const worker = new Worker(workerUrl);
 
     worker.onmessage = ev => {
-        const msg = ev.data as MessageToUI;
+        const msg = ev.data as MessageToMain;
 
         if (msg.type === 'startup-failure') {
             throw new Error(msg.err);
-        }
-
-        // Before we commit data to the model, make sure the current UI params
-        // match the params the data was constructed with...
-        if (msg.runner.c.re === escapeTime.c.re() &&
-            msg.runner.c.im === escapeTime.c.im() &&
-            msg.runner.maxIter === escapeTime.maxIter() &&
-            msg.runner.escapeRadius === escapeTime.escapeRadius() &&
-            msg.canvas.reRight - msg.canvas.reLeft === canvas.deltaRe() &&
-            msg.canvas.imTop - msg.canvas.imBottom === canvas.deltaIm() &&
-            msg.canvas.chunksHeight === canvas.chunksHeight() &&
-            msg.canvas.chunksWidth === canvas.chunksWidth()
-        ) {
-            escapeTimeData().get(msg.z)(new Uint16Array(msg.data));
+        } else if (msg.type === 'chunk-update') {
+            // Before we commit data to the model, make sure the current UI params
+            // match the params the data was constructed with...
+            if (msg.escapeTime.c.re === escapeTime.c.re() &&
+                msg.escapeTime.c.im === escapeTime.c.im() &&
+                msg.escapeTime.maxIter === escapeTime.maxIter() &&
+                msg.escapeTime.escapeRadius === escapeTime.escapeRadius() &&
+                msg.canvas.canvasWidthChunks === canvas.canvasWidthChunks() &&
+                msg.canvas.canvasHeightChunks === canvas.canvasHeightChunks() &&
+                msg.canvas.topLeft.re === canvas.topLeft.re() &&
+                msg.canvas.topLeft.im === canvas.topLeft.im() &&
+                msg.canvas.bottomRight.re === canvas.bottomRight.re() &&
+                msg.canvas.bottomRight.im === canvas.bottomRight.im()
+            ) {
+                escapeTimeData().get(msg.z)(new Uint16Array(msg.data));
+            }
         }
     };
 
     const workerInit : IWorkerInitMsg = {
         type: 'worker-init',
-        config: {
-            chunkSize: ChunkPixelSize,
+        worker: {
+            chunkSize: ChunkSize,
             pauseInterval: 250
         }
     };
     worker.postMessage(workerInit);
 
     S(() => {
-        const runnerInit : IRunnerInitMsg = {
-            type: 'runner-init',
-            runner: {
+        const runParams : IRunParamsUpdateMsg = {
+            type: 'run-params-update',
+            escapeTime: {
                 c: {
                     re: escapeTime.c.re(),
                     im: escapeTime.c.im()
@@ -148,15 +155,19 @@ export function App() {
                 escapeRadius: escapeTime.escapeRadius()
             },
             canvas: {
-                reLeft: canvas.reLeft(),
-                reRight: canvas.reLeft() + canvas.deltaRe(),
-                imBottom: canvas.imBottom(),
-                imTop: canvas.imBottom() + canvas.deltaIm(),
-                chunksWidth: canvas.chunksWidth(),
-                chunksHeight: canvas.chunksHeight()
+                canvasWidthChunks: canvas.canvasWidthChunks(),
+                canvasHeightChunks: canvas.canvasHeightChunks(),
+                topLeft: {
+                    re: canvas.topLeft.re(),
+                    im: canvas.topLeft.im()
+                },
+                bottomRight: {
+                    re: canvas.bottomRight.re(),
+                    im: canvas.bottomRight.im()
+                }
             },
         };
-        worker.postMessage(runnerInit);
+        worker.postMessage(runParams);
     });
 
     return {

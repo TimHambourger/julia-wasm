@@ -1,14 +1,18 @@
 import { IComplex } from './IComplex';
 
 export interface IWorkerConfig {
-    // Sizes in logical pixels
-    // Determines size of chunks that worker sends back to main thread
+    /**
+     * The size of the chunks that will be sent from the worker to the main thread.
+     */
     chunkSize : {
-        height : number,
-        width : number
-    },
-    // Worker pauses periodically to give main thread a chance to invalidate the current runner
-    // This is the interval for those pauses in ms.
+        widthPx : number;
+        heightPx : number;
+    };
+
+    /**
+     * The worker pauses periodically to give the main thread a chance to invalidate the current
+     * run params. This is the interval for those pauses in ms.
+     */
     pauseInterval : number;
 }
 
@@ -19,16 +23,13 @@ export interface IEscapeTimeConfig {
     escapeRadius : number;
 }
 
-export interface ICanvasSize {
+export interface ICanvasConfig {
+    canvasWidthChunks : number;
+    canvasHeightChunks : number;
     // We're agnostic to whether axes go from low to high or vice versa.
     // Our invariants are that the real axis is horizontal, the imaginary
     // axis is vertical, and we'll fill output buffers from left to right
     // and from top to bottom.
-    reLeft : number;
-    reRight : number;
-    imTop : number;
-    imBottom : number;
-    // Sizes measured in chunks of work
-    chunksWidth : number;
-    chunksHeight : number;
+    topLeft : IComplex;
+    bottomRight : IComplex;
 }
