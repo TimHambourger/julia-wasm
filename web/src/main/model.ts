@@ -35,9 +35,9 @@ export function App(workerUrl : string) {
         escapeTime = {
             c: {
                 re: S.value(0),
-                im: S.value(1)
+                im: S.value(0.8)
             },
-            maxIter: S.value(200),
+            maxIter: S.value(50),
             escapeRadius: S.value(2)
         },
         // EscapeTime data is 2 bytes per logical pixel
@@ -89,7 +89,7 @@ export function App(workerUrl : string) {
                     // Modify previous image in place if we have one, otherwise acquire one from the pool
                     imageChunk = prevImage ? prevImage.data : new Uint8ClampedArray(imageDataPool.acquire());
 
-                for (let i = 0; i * 4 < chunk.length && i < imageChunk.length; i += 4) {
+                for (let i = 0; i / 4 < chunk.length && i < imageChunk.length; i += 4) {
                     const { r, g, b } = _colorizer(chunk[i / 4] / maxIter);
                     imageChunk[i] = r;
                     imageChunk[i + 1] = g;
