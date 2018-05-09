@@ -27,7 +27,9 @@ module.exports = {
         globalObject: 'this'
     },
     resolve: {
-        extensions: ['.ts', '.tsx', '.js', '.wasm']
+        // For now, don't need wasm extensions b/c we're using wasm-bindgen's wasm2es6js instead of
+        // webpack b/c webpack's wasm support doesn't work from web workers.
+        extensions: ['.ts', '.tsx', '.js' /* , '.wasm' */]
     },
 
     devtool: "sourcemap",

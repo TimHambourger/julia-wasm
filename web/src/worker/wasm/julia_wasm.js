@@ -21,6 +21,26 @@ export class EscapeTime {
 }
 }
 
+export class Canvas {
+
+                static __construct(ptr) {
+                    return new Canvas(ptr);
+                }
+
+                constructor(ptr) {
+                    this.ptr = ptr;
+                }
+
+            free() {
+                const ptr = this.ptr;
+                this.ptr = 0;
+                wasm.__wbg_canvas_free(ptr);
+            }
+        static new(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+    return Canvas.__construct(wasm.canvas_new(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7));
+}
+}
+
 export class Buffer {
 
                 static __construct(ptr) {
@@ -84,26 +104,6 @@ last_chunk_loaded_re() {
 }
 last_chunk_loaded_im() {
     return wasm.escapetimerunner_last_chunk_loaded_im(this.ptr);
-}
-}
-
-export class Canvas {
-
-                static __construct(ptr) {
-                    return new Canvas(ptr);
-                }
-
-                constructor(ptr) {
-                    this.ptr = ptr;
-                }
-
-            free() {
-                const ptr = this.ptr;
-                this.ptr = 0;
-                wasm.__wbg_canvas_free(ptr);
-            }
-        static new(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
-    return Canvas.__construct(wasm.canvas_new(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7));
 }
 }
 

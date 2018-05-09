@@ -1,0 +1,7 @@
+# build wasm
+
+# TODO: Release build!
+cargo build --target=wasm32-unknown-unknown
+wasm-bindgen --browser target/wasm32-unknown-unknown/debug/julia_wasm.wasm --out-dir ../web/src/worker/wasm/
+# Workaround for webpack issue dynamically importing wasm into web worker
+wasm2es6js --typescript --base64 --output ../web/src/worker/wasm/julia_wasm_bg.js ../web/src/worker/wasm/julia_wasm_bg.wasm

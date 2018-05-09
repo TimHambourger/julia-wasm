@@ -1,15 +1,15 @@
 import { MessageToWorker, IWorkerInitMsg, IRunParamsUpdateMsg, IStartupFailureMsg } from '../shared/messages';
 import { MemoryPool } from '../shared/memoryPool';
-// IMPORTANT: Only importing the WorkerCoreType synchronously.
-// This is a type-only import that will get removed by typescript before processing by webpack.
-// We import that the actual WorkerCore class constructor via a dynamic import below.
-// This is b/c currently webpack can only import wasm in dependency graphs rooted in a dynamic import.
-import { WorkerCoreType } from './workerCore';
+// Import WorkerCore synchronously, but we won't actually construct one until we make sure our wasm is booted.
+// This is a workaround for the fact that webpack's bult-in wasm support currently can't import wasm into a
+// web worker (falls at runtime due to use of document APIs).
+import { WorkerCore } from './workerCore';
+import { booted } from './wasm/julia_wasm_bg';
 
 let resolveWorkerInitMsg = null as ((msg : IWorkerInitMsg) => void) | null,
     resolveEnsureRunParams = null as (() => void) | null,
     initialRunParams = null as IRunParamsUpdateMsg | null,
-    workerCore = null as WorkerCoreType | null;
+    workerCore = null as WorkerCore | null;
 
 // Put bootstrapping code behind Promises.
 // The goal is to get enough info to construct a WorkerCore, which then
@@ -17,14 +17,12 @@ let resolveWorkerInitMsg = null as ((msg : IWorkerInitMsg) => void) | null,
 const
     getWorkerInitMsg = new Promise<IWorkerInitMsg>(resolve => resolveWorkerInitMsg = resolve),
     ensureRunParams = new Promise<void>(resolve => resolveEnsureRunParams = resolve),
-    // Import the workerCore module async/dynamically. This is handle by webpack.
-    importWorkerCore = import(/* webpackChunkName: "workerCore" */ './workerCore'),
     initWorkerCore = (async () => {
-        const
-            WorkerCore = (await importWorkerCore).WorkerCore,
-            initMsg = await getWorkerInitMsg;
+        const initMsg = await getWorkerInitMsg;
 
         await ensureRunParams;
+        // Ensure wasm is booted before constructing workerCore.
+        await booted;
 
         workerCore = new WorkerCore(
             initMsg.worker,
