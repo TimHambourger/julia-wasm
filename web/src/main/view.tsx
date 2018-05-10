@@ -38,6 +38,13 @@ let Settings = ({ app } : { app : App }) =>
                 onChange={e => app.escapeTime.escapeRadius(+e.currentTarget.value)}
             />
         </span>
+        <ZoomButtons app={app} />
+    </div>;
+
+let ZoomButtons = ({ app } : { app : App }) =>
+    <div>
+        <span onClick={() => app.canvas.zoom({ re: 1.1, im: 1.1 })}>+</span>
+        <span onClick={() => app.canvas.zoom({ re: 0.9, im: 0.9 })}>-</span>
     </div>;
 
 let Canvas = ({ app } : { app : App }) =>
@@ -45,6 +52,11 @@ let Canvas = ({ app } : { app : App }) =>
         fn={renderJuliaImage(app)}
         width={app.canvas.canvasWidthChunks() * ChunkSize.widthPx}
         height={app.canvas.canvasHeightChunks() * ChunkSize.heightPx}
+        style={{
+            // TODO: Dynamic sizing based on screen size
+            width: '400px',
+            height: '400px'
+        }}
     />;
 
 let renderJuliaImage = (app : App) => (canvas : HTMLCanvasElement) => {

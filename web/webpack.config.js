@@ -32,7 +32,9 @@ module.exports = {
         extensions: ['.ts', '.tsx', '.js' /* , '.wasm' */]
     },
 
-    devtool: "sourcemap",
+    // surplus-loader's sourcemaps have inaccurate line numbers, so for now,
+    // debugging through output JS
+    devtool: false,
 
     mode: "development",
 

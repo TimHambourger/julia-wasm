@@ -4,6 +4,7 @@ import { ICanvasConfig, IEscapeTimeConfig, IWorkerConfig } from '../shared/confi
 import { IRunParamsUpdateMsg, IWorkerInitMsg, MessageToMain } from '../shared/messages';
 import { DataBundle } from './dataBundle';
 import { shadeDark, shadeLight } from './colorizers';
+import { IComplex } from '../shared/IComplex';
 
 /**
  * The size of a data chunk in pixels, i.e. canvas coordinates.
@@ -11,27 +12,27 @@ import { shadeDark, shadeLight } from './colorizers';
  * to the worker thread and populated via WASM.
  */
 export const ChunkSize = {
-    heightPx: 32,
-    widthPx: 32
+    heightPx: 1 << 6,
+    widthPx: 1 << 6
 };
 
 export type App = ReturnType<typeof App>;
 export function App(workerUrl : string) {
     const
-        canvas = {
+        canvas = Canvas({
             // height of canvas in chunks
-            canvasWidthChunks: S.value(16),
+            canvasWidthChunks: 1 << 4,
             // width of canvas in chunks
-            canvasHeightChunks: S.value(16),
+            canvasHeightChunks: 1 << 4,
             topLeft: {
-                re: S.value(-2),
-                im: S.value(2),
+                re: -1.026316236461413,
+                im: 1.026316236461413
             },
             bottomRight: {
-                re: S.value(2),
-                im: S.value(-2)
+                re: 1.026316236461413,
+                im: -1.026316236461413
             }
-        },
+        }),
         escapeTime = {
             c: {
                 re: S.value(0),
@@ -59,7 +60,14 @@ export function App(workerUrl : string) {
             canvas.canvasWidthChunks();
             canvas.canvasHeightChunks();
 
-            const data = new DataBundle<Uint16Array>();
+            const
+                // precision for indexing by complex coordinates.
+                // Set to size of a single pixel, which should be plenty.
+                precision = {
+                    re: (canvas.bottomRight.re() - canvas.topLeft.re()) / canvas.canvasWidthChunks() / ChunkSize.widthPx,
+                    im: (canvas.bottomRight.im() - canvas.topLeft.im()) / canvas.canvasHeightChunks() / ChunkSize.heightPx
+                },
+                data = new DataBundle<Uint16Array>(precision);
 
             // Recycle buffers when constructing a new data bundle
             S.cleanup(() => data.crack().forEach(chunk => {
@@ -144,30 +152,34 @@ export function App(workerUrl : string) {
     worker.postMessage(workerInit);
 
     S(() => {
-        const runParams : IRunParamsUpdateMsg = {
-            type: 'run-params-update',
-            escapeTime: {
-                c: {
-                    re: escapeTime.c.re(),
-                    im: escapeTime.c.im()
+        const
+            // Return contents of escapeTimeDataPool back to the worker to be refilled.
+            returningBuffers = escapeTimeDataPool.drain(),
+            runParams : IRunParamsUpdateMsg = {
+                type: 'run-params-update',
+                escapeTime: {
+                    c: {
+                        re: escapeTime.c.re(),
+                        im: escapeTime.c.im()
+                    },
+                    maxIter: escapeTime.maxIter(),
+                    escapeRadius: escapeTime.escapeRadius()
                 },
-                maxIter: escapeTime.maxIter(),
-                escapeRadius: escapeTime.escapeRadius()
-            },
-            canvas: {
-                canvasWidthChunks: canvas.canvasWidthChunks(),
-                canvasHeightChunks: canvas.canvasHeightChunks(),
-                topLeft: {
-                    re: canvas.topLeft.re(),
-                    im: canvas.topLeft.im()
+                canvas: {
+                    canvasWidthChunks: canvas.canvasWidthChunks(),
+                    canvasHeightChunks: canvas.canvasHeightChunks(),
+                    topLeft: {
+                        re: canvas.topLeft.re(),
+                        im: canvas.topLeft.im()
+                    },
+                    bottomRight: {
+                        re: canvas.bottomRight.re(),
+                        im: canvas.bottomRight.im()
+                    }
                 },
-                bottomRight: {
-                    re: canvas.bottomRight.re(),
-                    im: canvas.bottomRight.im()
-                }
-            },
-        };
-        worker.postMessage(runParams);
+                buffers: returningBuffers
+            };
+        worker.postMessage(runParams, returningBuffers);
     });
 
     return {
@@ -176,4 +188,67 @@ export function App(workerUrl : string) {
         colorizer,
         imageData
     };
+}
+
+interface CanvasOptions {
+    canvasWidthChunks : number;
+    canvasHeightChunks : number;
+    topLeft : IComplex;
+    bottomRight : IComplex;
+}
+
+function Canvas(opts : CanvasOptions) {
+    const
+        canvasWidthChunks = S.value(opts.canvasWidthChunks),
+        canvasHeightChunks = S.value(opts.canvasHeightChunks),
+        topLeft = {
+            re: S.value(opts.topLeft.re),
+            im: S.value(opts.topLeft.im)
+        },
+        bottomRight = {
+            re: S.value(opts.bottomRight.re),
+            im: S.value(opts.bottomRight.im)
+        };
+
+    return {
+        canvasWidthChunks,
+        canvasHeightChunks,
+        topLeft,
+        bottomRight,
+        zoom
+    };
+
+    /**
+     * Zoom the canvas relative to its center point.
+     * @param scaleFactor A complex number specifying how to scale the canvas's real
+     * and imaginary axes. For each axis, 1 means preserve as is, > 1 means zoom
+     * in, and < 1 means zoom out.
+     */
+    function zoom(scaleFactor : IComplex) {
+        S.sample(() => {
+            const
+                delta = {
+                    re: bottomRight.re() - topLeft.re(),
+                    im: bottomRight.im() - topLeft.im()
+                },
+                center = {
+                    re: topLeft.re() + delta.re / 2,
+                    im: topLeft.im() + delta.im / 2
+                },
+                newDelta = {
+                    // Ironically, we need to DIVIDE by the scale factor.
+                    // That's b/c we want scale factors > 1 to zoom in, i.e. make the
+                    // delta smaller, and analogously for scale factors < 1.
+                    re: delta.re / scaleFactor.re,
+                    im: delta.im / scaleFactor.im
+                };
+
+            S.freeze(() => {
+                topLeft.re(center.re - newDelta.re / 2);
+                topLeft.im(center.im - newDelta.im / 2);
+                bottomRight.re(center.re + newDelta.re / 2);
+                bottomRight.im(center.im + newDelta.im / 2);
+            })
+        });
+    }
 }

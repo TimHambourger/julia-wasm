@@ -1,4 +1,4 @@
 export interface IComplex {
-    re : number;
-    im : number;
+    readonly re : number;
+    readonly im : number;
 }

@@ -16,11 +16,22 @@ export interface IBundle<T> {
      * Useful for, e.g., reclaiming memory.
      */
     crack() : T[];
+
+    precision : IComplex;
 }
 
 abstract class Bundle<T> implements IBundle<T> {
     abstract get(z : IComplex) : () => T;
     protected abstract currentSlots() : (() => T)[];
+
+    private numDecimalPlaces : IComplex;
+
+    constructor(readonly precision : IComplex) {
+        this.numDecimalPlaces = {
+            re: numDecimalPlaces(precision.re),
+            im: numDecimalPlaces(precision.im)
+        };
+    }
 
     map<U>(fn : (data : T, prev : U | undefined, z : IComplex) => U) : IBundle<U> {
         return new MappedBundle(this, fn);
@@ -29,19 +40,28 @@ abstract class Bundle<T> implements IBundle<T> {
     crack() {
         return this.currentSlots().map(slot => slot());
     }
+
+    protected zKey(z : IComplex) {
+        const
+            roundedRe = Math.round(z.re / this.precision.re) * this.precision.re,
+            roundedIm = Math.round(z.im / this.precision.im) * this.precision.im,
+            strRe = roundedRe.toFixed(this.numDecimalPlaces.re),
+            strIm = roundedIm.toFixed(this.numDecimalPlaces.im);
+        return `${strRe}+${strIm}i`;
+    }
 }
 
 export class DataBundle<T> extends Bundle<T | null> {
     private readonly chunks : Map<string, DataSignal<T | null>>;
 
-    constructor() {
-        super();
+    constructor(precision : IComplex) {
+        super(precision);
         this.chunks = new Map<string, DataSignal<T | null>>();
     }
 
     get(z : IComplex) {
         const
-            key = zKey(z),
+            key = this.zKey(z),
             chunk = this.chunks.get(key) || S.data(null);
         this.chunks.set(key, chunk);
         return chunk;
@@ -64,9 +84,9 @@ export class MappedBundle<T, U> extends Bundle<U> {
 
     constructor(
         private readonly original : IBundle<T>,
-        private readonly mapFn : (data : T, prev : U | undefined, z : IComplex) => U
+        private readonly mapFn : (data : T, prev : U | undefined, z : IComplex) => U,
     ) {
-        super();
+        super(original.precision);
         this.chunks = new Map<string, MappedBundleChunk<U>>();
 
         // This computation becomes an "adoptive" parent of all mapped chunks
@@ -78,7 +98,7 @@ export class MappedBundle<T, U> extends Bundle<U> {
     }
 
     get(z : IComplex) {
-        const key = zKey(z);
+        const key = this.zKey(z);
         let chunk = this.chunks.get(key);
         if (!chunk) {
             let dispose! : () => void;
@@ -103,6 +123,9 @@ export class MappedBundle<T, U> extends Bundle<U> {
     }
 }
 
-function zKey(z : IComplex) {
-    return `${z.re}+${z.im}i`;
+function numDecimalPlaces(input : number) {
+    if (Math.floor(input) === input) return 0;
+    const splits = input.toString().split('.');
+    if (splits.length < 2) return 0;
+    return splits[1].length;
 }
