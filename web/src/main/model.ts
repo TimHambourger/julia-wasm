@@ -44,12 +44,12 @@ const CANVAS_DEFAULTS : CanvasOptions = {
     canvasWidthChunks : 1 << 4,
     canvasHeightChunks : 1 << 4,
     topLeft: {
-        re: -2,
-        im: 2
+        re: -1.36,
+        im: 1.36
     },
     bottomRight: {
-        re: 2,
-        im: -2
+        re: 1.36,
+        im: -1.36
     }
 };
 
