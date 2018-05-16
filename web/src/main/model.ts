@@ -6,41 +6,99 @@ import { DataBundle } from './dataBundle';
 import { shadeDark, shadeLight } from './colorizers';
 import { IComplex } from '../shared/IComplex';
 
+// NOTE: This version isn't fully general but works for what we need.
+// For a fuller solution that also covers arrays, see https://stackoverflow.com/a/49936686
+export type DeepPartial<T> = {
+    [K in keyof T]? : DeepPartial<T[K]>;
+};
+
+export interface CanvasOptions {
+    canvasWidthChunks : number;
+    canvasHeightChunks : number;
+    topLeft : IComplex;
+    bottomRight : IComplex;
+}
+
+export interface EscapeTimeOptions {
+    c : IComplex;
+    maxIter : number;
+    escapeRadius : number;
+}
+
+export interface AppOptions {
+    canvas : CanvasOptions;
+    escapeTime : EscapeTimeOptions;
+}
+
 /**
  * The size of a data chunk in pixels, i.e. canvas coordinates.
  * Influences the size of the data buffers that get shuttled back and forth
  * to the worker thread and populated via WASM.
  */
 export const ChunkSize = {
-    heightPx: 1 << 6,
-    widthPx: 1 << 6
+    heightPx: 1 << 5,
+    widthPx: 1 << 5
 };
 
-export type App = ReturnType<typeof App>;
-export function App(workerUrl : string) {
+const CANVAS_DEFAULTS : CanvasOptions = {
+    canvasWidthChunks : 1 << 4,
+    canvasHeightChunks : 1 << 4,
+    topLeft: {
+        re: -2,
+        im: 2
+    },
+    bottomRight: {
+        re: 2,
+        im: -2
+    }
+};
+
+const ESCAPE_TIME_DEFAULTS : EscapeTimeOptions = {
+    c: {
+        re: 0,
+        im: 0.8
+    },
+    maxIter: 50,
+    escapeRadius: 2
+};
+
+function applyDefaults(opts : DeepPartial<AppOptions>) : AppOptions {
     const
-        canvas = Canvas({
-            // height of canvas in chunks
-            canvasWidthChunks: 1 << 4,
-            // width of canvas in chunks
-            canvasHeightChunks: 1 << 4,
+        canvasOpts = opts.canvas || {},
+        topLeftOpts = canvasOpts.topLeft || {},
+        bottomRightOpts = canvasOpts.bottomRight || {},
+        escapeTimeOpts = opts.escapeTime || {},
+        cOpts = escapeTimeOpts.c || {};
+    return {
+        canvas: {
+            canvasWidthChunks: canvasOpts.canvasWidthChunks !== undefined ? canvasOpts.canvasWidthChunks : CANVAS_DEFAULTS.canvasWidthChunks,
+            canvasHeightChunks: canvasOpts.canvasHeightChunks !== undefined ? canvasOpts.canvasHeightChunks : CANVAS_DEFAULTS.canvasHeightChunks,
             topLeft: {
-                re: -1.026316236461413,
-                im: 1.026316236461413
+                re: topLeftOpts.re !== undefined ? topLeftOpts.re : CANVAS_DEFAULTS.topLeft.re,
+                im: topLeftOpts.im !== undefined ? topLeftOpts.im : CANVAS_DEFAULTS.topLeft.im
             },
             bottomRight: {
-                re: 1.026316236461413,
-                im: -1.026316236461413
+                re: bottomRightOpts.re !== undefined ? bottomRightOpts.re : CANVAS_DEFAULTS.bottomRight.re,
+                im: bottomRightOpts.im !== undefined ? bottomRightOpts.im : CANVAS_DEFAULTS.bottomRight.im
             }
-        }),
-        escapeTime = {
-            c: {
-                re: S.value(0),
-                im: S.value(0.8)
-            },
-            maxIter: S.value(50),
-            escapeRadius: S.value(2)
         },
+        escapeTime: {
+            c: {
+                re: cOpts.re !== undefined ? cOpts.re : ESCAPE_TIME_DEFAULTS.c.re,
+                im: cOpts.im !== undefined ? cOpts.im : ESCAPE_TIME_DEFAULTS.c.im
+            },
+            maxIter: escapeTimeOpts.maxIter !== undefined ? escapeTimeOpts.maxIter : ESCAPE_TIME_DEFAULTS.maxIter,
+            escapeRadius: escapeTimeOpts.escapeRadius !== undefined ? escapeTimeOpts.escapeRadius : ESCAPE_TIME_DEFAULTS.escapeRadius
+        }
+    };
+}
+
+export type App = ReturnType<typeof App>;
+export function App(workerUrl : string, opts : DeepPartial<AppOptions>) {
+    const
+        { canvas: canvasOpts, escapeTime: escapeTimeOpts } = applyDefaults(opts),
+        canvas = Canvas(canvasOpts),
+        escapeTime = EscapeTime(escapeTimeOpts),
         // EscapeTime data is 2 bytes per logical pixel
         escapeTimeDataPool = new MemoryPool(ChunkSize.widthPx * ChunkSize.heightPx * 2),
         // ImageData is 4 bytes per logical pixel
@@ -186,15 +244,51 @@ export function App(workerUrl : string) {
         canvas,
         escapeTime,
         colorizer,
-        imageData
+        imageData,
+        updateOpts,
+        currentOpts
     };
-}
 
-interface CanvasOptions {
-    canvasWidthChunks : number;
-    canvasHeightChunks : number;
-    topLeft : IComplex;
-    bottomRight : IComplex;
+    function updateOpts(opts : DeepPartial<AppOptions>) {
+        const { canvas: canvasOpts, escapeTime: escapeTimeOpts } = applyDefaults(opts);
+        S.freeze(() => {
+            canvas.canvasWidthChunks(canvasOpts.canvasWidthChunks);
+            canvas.canvasHeightChunks(canvasOpts.canvasHeightChunks);
+            canvas.topLeft.re(canvasOpts.topLeft.re);
+            canvas.topLeft.im(canvasOpts.topLeft.im);
+            canvas.bottomRight.re(canvasOpts.bottomRight.re);
+            canvas.bottomRight.im(canvasOpts.bottomRight.im);
+            escapeTime.c.re(escapeTimeOpts.c.re);
+            escapeTime.c.im(escapeTimeOpts.c.im);
+            escapeTime.maxIter(escapeTimeOpts.maxIter);
+            escapeTime.escapeRadius(escapeTimeOpts.escapeRadius);
+        });
+    }
+
+    function currentOpts() : AppOptions {
+        return {
+            canvas: {
+                canvasWidthChunks: canvas.canvasWidthChunks(),
+                canvasHeightChunks: canvas.canvasHeightChunks(),
+                topLeft: {
+                    re: canvas.topLeft.re(),
+                    im: canvas.topLeft.im()
+                },
+                bottomRight: {
+                    re: canvas.bottomRight.re(),
+                    im: canvas.bottomRight.im()
+                }
+            },
+            escapeTime: {
+                c: {
+                    re: escapeTime.c.re(),
+                    im: escapeTime.c.im()
+                },
+                maxIter: escapeTime.maxIter(),
+                escapeRadius: escapeTime.escapeRadius()
+            }
+        };
+    }
 }
 
 function Canvas(opts : CanvasOptions) {
@@ -251,4 +345,15 @@ function Canvas(opts : CanvasOptions) {
             })
         });
     }
+}
+
+function EscapeTime(opts : EscapeTimeOptions) {
+    return {
+        c: {
+            re: S.value(opts.c.re),
+            im: S.value(opts.c.im)
+        },
+        maxIter: S.value(opts.maxIter),
+        escapeRadius: S.value(opts.escapeRadius)
+    };
 }
