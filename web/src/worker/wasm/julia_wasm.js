@@ -1,46 +1,6 @@
 /* tslint:disable */
 import * as wasm from './julia_wasm_bg';
 
-export class EscapeTime {
-
-                static __construct(ptr) {
-                    return new EscapeTime(ptr);
-                }
-
-                constructor(ptr) {
-                    this.ptr = ptr;
-                }
-
-            free() {
-                const ptr = this.ptr;
-                this.ptr = 0;
-                wasm.__wbg_escapetime_free(ptr);
-            }
-        static new(arg0, arg1, arg2, arg3) {
-    return EscapeTime.__construct(wasm.escapetime_new(arg0, arg1, arg2, arg3));
-}
-}
-
-export class Canvas {
-
-                static __construct(ptr) {
-                    return new Canvas(ptr);
-                }
-
-                constructor(ptr) {
-                    this.ptr = ptr;
-                }
-
-            free() {
-                const ptr = this.ptr;
-                this.ptr = 0;
-                wasm.__wbg_canvas_free(ptr);
-            }
-        static new(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
-    return Canvas.__construct(wasm.canvas_new(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7));
-}
-}
-
 export class Buffer {
 
                 static __construct(ptr) {
@@ -61,6 +21,26 @@ export class Buffer {
 }
 as_ptr() {
     return wasm.buffer_as_ptr(this.ptr);
+}
+}
+
+export class Canvas {
+
+                static __construct(ptr) {
+                    return new Canvas(ptr);
+                }
+
+                constructor(ptr) {
+                    this.ptr = ptr;
+                }
+
+            free() {
+                const ptr = this.ptr;
+                this.ptr = 0;
+                wasm.__wbg_canvas_free(ptr);
+            }
+        static new(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+    return Canvas.__construct(wasm.canvas_new(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7));
 }
 }
 
@@ -104,6 +84,26 @@ last_chunk_loaded_re() {
 }
 last_chunk_loaded_im() {
     return wasm.escapetimerunner_last_chunk_loaded_im(this.ptr);
+}
+}
+
+export class EscapeTime {
+
+                static __construct(ptr) {
+                    return new EscapeTime(ptr);
+                }
+
+                constructor(ptr) {
+                    this.ptr = ptr;
+                }
+
+            free() {
+                const ptr = this.ptr;
+                this.ptr = 0;
+                wasm.__wbg_escapetime_free(ptr);
+            }
+        static new(arg0, arg1, arg2, arg3) {
+    return EscapeTime.__construct(wasm.escapetime_new(arg0, arg1, arg2, arg3));
 }
 }
 
@@ -165,16 +165,16 @@ export function __wbindgen_object_drop_ref(i) { dropRef(i); }
 
 let cachedDecoder = new TextDecoder('utf-8');
 
-let cachedUint8Memory = null;
+let cachegetUint8Memory = null;
 function getUint8Memory() {
-    if (cachedUint8Memory === null ||
-        cachedUint8Memory.buffer !== wasm.memory.buffer)
-        cachedUint8Memory = new Uint8Array(wasm.memory.buffer);
-    return cachedUint8Memory;
+    if (cachegetUint8Memory === null ||
+        cachegetUint8Memory.buffer !== wasm.memory.buffer)
+        cachegetUint8Memory = new Uint8Array(wasm.memory.buffer);
+    return cachegetUint8Memory;
 }
 
 function getStringFromWasm(ptr, len) {
-    return cachedDecoder.decode(getUint8Memory().slice(ptr, ptr + len));
+    return cachedDecoder.decode(getUint8Memory().subarray(ptr, ptr + len));
 }
 
 export function __wbindgen_string_new(p, l) {
@@ -242,12 +242,12 @@ function passStringToWasm(arg) {
     return [ptr, buf.length];
 }
 
-let cachedUint32Memory = null;
+let cachegetUint32Memory = null;
 function getUint32Memory() {
-    if (cachedUint32Memory === null ||
-        cachedUint32Memory.buffer !== wasm.memory.buffer)
-        cachedUint32Memory = new Uint32Array(wasm.memory.buffer);
-    return cachedUint32Memory;
+    if (cachegetUint32Memory === null ||
+        cachegetUint32Memory.buffer !== wasm.memory.buffer)
+        cachegetUint32Memory = new Uint32Array(wasm.memory.buffer);
+    return cachegetUint32Memory;
 }
 
 export function __wbindgen_string_get(i, len_ptr) {

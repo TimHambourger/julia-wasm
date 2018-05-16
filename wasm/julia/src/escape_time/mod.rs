@@ -64,6 +64,7 @@ impl EscapeTimeRunner {
             let mut iter = canvas.iter();
             let next_chunk = iter.next();
             self.escape_time = escape_time;
+            self.canvas = canvas;
             self.iter = iter;
             self.next_chunk = next_chunk;
         }
