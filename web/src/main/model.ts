@@ -3,7 +3,7 @@ import { MemoryPool } from '../shared/memoryPool';
 import { ICanvasConfig, IEscapeTimeConfig, IWorkerConfig } from '../shared/config';
 import { IRunParamsUpdateMsg, IWorkerInitMsg, MessageToMain } from '../shared/messages';
 import { DataBundle } from './dataBundle';
-import { shadeDark, shadeLight } from './colorizers';
+import { linearFade } from './colorizers';
 import { IComplex } from '../shared/IComplex';
 
 // NOTE: This version isn't fully general but works for what we need.
@@ -140,7 +140,7 @@ export function App(workerUrl : string, opts : DeepPartial<AppOptions>) {
 
             return data;
         }),
-        colorizer = S.value(shadeDark({ r: 255, g: 0, b: 0 })),
+        colorizer = S.value(linearFade({ r: 255, g: 0, b: 0 }, { r: 0, g: 0, b: 0 })),
         imageData = S(() => {
             const data = escapeTimeData().map<ImageData | null>((chunk, prevImage) => {
                 if (!chunk) {
@@ -156,10 +156,10 @@ export function App(workerUrl : string, opts : DeepPartial<AppOptions>) {
                     imageChunk = prevImage ? prevImage.data : new Uint8ClampedArray(imageDataPool.acquire());
 
                 for (let i = 0; i / 4 < chunk.length && i < imageChunk.length; i += 4) {
-                    const { r, g, b } = _colorizer(chunk[i / 4] / maxIter);
-                    imageChunk[i] = r;
-                    imageChunk[i + 1] = g;
-                    imageChunk[i + 2] = b;
+                    const magnitude = chunk[i / 4] / maxIter;
+                    imageChunk[i]     = _colorizer.r(magnitude);
+                    imageChunk[i + 1] = _colorizer.g(magnitude);
+                    imageChunk[i + 2] = _colorizer.b(magnitude);
                     imageChunk[i + 3] = 255;
                 }
 
