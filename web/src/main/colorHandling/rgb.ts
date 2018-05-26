@@ -10,9 +10,9 @@ export class RGB {
         return 0 <= this.r && this.r <= 255 && 0 <= this.g && this.g <= 255 && 0 <= this.b && this.b <= 255;
     }
 
-    toString() {
+    toString(opts : { hideHash? : boolean } = {}) {
         return this.isValid() ?
-            `#${toHex(this.r)}${toHex(this.g)}${toHex(this.b)}`.toLowerCase() :
+            (opts.hideHash ? '' : '#') + (toHex(this.r) + toHex(this.g) + toHex(this.b)).toLowerCase() :
             'INVALID';
     }
 

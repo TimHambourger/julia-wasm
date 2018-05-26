@@ -43,8 +43,8 @@ let Settings = ({ app } : { app : App }) =>
 
 let ZoomButtons = ({ app } : { app : App }) =>
     <div>
-        <span onClick={() => app.canvasMgr.zoom({ re: 1.1, im: 1.1 })}>+</span>
-        <span onClick={() => app.canvasMgr.zoom({ re: 0.9, im: 0.9 })}>-</span>
+        <span onClick={() => app.canvasMgr.zoom(1.1)}>+</span>
+        <span onClick={() => app.canvasMgr.zoom(0.9)}>-</span>
     </div>;
 
 let Canvas = ({ app, mounted } : { app : App, mounted : () => boolean }) =>

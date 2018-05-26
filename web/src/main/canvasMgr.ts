@@ -7,10 +7,16 @@ export interface CanvasMgrOptions {
      * Center of the displayed canvas in complex coordinates.
      */
     center : IComplex;
+
     /**
-     * Bottom right - top left in complex coordinates for any given chunk.
+     * Number of browser px per change of 1 in complex coordinates, in either real or imaginary axis.
      */
-    chunkDelta : IComplex;
+    zoom : number;
+
+    /**
+     * Number of logical px per browser px, in either real or imaginary axis.
+     */
+    resolution : number;
 }
 
 /**
@@ -32,8 +38,10 @@ export function CanvasMgr(opts : CanvasMgrOptions) {
             width:  S.value<number | null>(null),
             height: S.value<number | null>(null)
         },
+        // Number of browser px per change of 1 in complex coordinates
+        zoomLevel = S.value(opts.zoom),
         // Ratio of logical px to browser px. Higher means more logical px per browser px.
-        resolution = S.value(1.25),
+        resolution = S.value(opts.resolution),
         // Center of the displayed canvas in complex coordinates
         center = {
             re: S.value(opts.center.re),
@@ -48,8 +56,8 @@ export function CanvasMgr(opts : CanvasMgrOptions) {
         },
         // Bottom right - top left in complex coordinates for any given chunk
         chunkDelta = {
-            re: S.value(opts.chunkDelta.re),
-            im: S.value(opts.chunkDelta.im)
+            re: () => ChunkSizePx.width  / zoomLevel() / resolution(),
+            im: () => ChunkSizePx.height / zoomLevel() / resolution()
         },
         // Size of canvas in (possibly fractional) logical px
         canvasSizeLogicalPx = {
@@ -120,18 +128,12 @@ export function CanvasMgr(opts : CanvasMgrOptions) {
 
     /**
      * Zoom the canvas relative to its center point.
-     * @param scaleFactor A complex number specifying how to scale the canvas's real
-     * and imaginary axes. For each axis, 1 means preserve as is, > 1 means zoom
-     * in, and < 1 means zoom out.
+     * @param scaleFactor A multiplier to apply to the current zoom level.
+     * 1 means preserve as is, > 1 means zoom in, and < 1 means zoom out.
      */
-    function zoom(scaleFactor : IComplex) {
+    function zoom(scaleFactor : number) {
         S.freeze(() => S.sample(() => {
-            // Zooming means changing the chunk delta.
-            // Ironically, we need to DIVIDE by the scale factor.
-            // That's b/c we want scale factors > 1 to zoom in, i.e. make the
-            // delta smaller, and analogously for scale factors < 1.
-            chunkDelta.re(chunkDelta.re() / scaleFactor.re);
-            chunkDelta.im(chunkDelta.im() / scaleFactor.im);
+            zoomLevel(zoomLevel() * scaleFactor);
             // When zooming, also go ahead and reset origin to match current center
             origin.re(center.re());
             origin.im(center.im());
@@ -155,10 +157,8 @@ export function CanvasMgr(opts : CanvasMgrOptions) {
                 re: center.re(),
                 im: center.im()
             },
-            chunkDelta: {
-                re: chunkDelta.re(),
-                im: chunkDelta.im()
-            }
+            zoom: zoomLevel(),
+            resolution: resolution()
         };
     }
 
@@ -166,10 +166,10 @@ export function CanvasMgr(opts : CanvasMgrOptions) {
         S.freeze(() => S.sample(() => {
             center.re(opts.center.re);
             center.im(opts.center.im);
-            chunkDelta.re(opts.chunkDelta.re);
-            chunkDelta.im(opts.chunkDelta.im);
-            // If chunk delta is changing, go ahead and reset origin too
-            if (opts.chunkDelta.re !== chunkDelta.re() || opts.chunkDelta.im !== chunkDelta.im()) {
+            zoomLevel(opts.zoom);
+            resolution(opts.resolution);
+            // If zoom level or resolution is changing, go ahead and reset origin too
+            if (opts.zoom !== zoomLevel() || opts.resolution !== resolution()) {
                 origin.re(opts.center.re);
                 origin.im(opts.center.im);
             }
