@@ -1,4 +1,8 @@
-import { DeepPartial, AppOptions, EscapeTimeOptions, CanvasOptions } from './model';
+import { CanvasMgrOptions } from './canvasMgr';
+import { EscapeTimeRunnerOptions } from './runner';
+import { ImagerOptions } from './imager';
+import { RGB } from './colorHandling/rgb';
+import { DeepPartial, AppOptions } from './app';
 
 /**
  * Parse query string into App options
@@ -7,7 +11,17 @@ import { DeepPartial, AppOptions, EscapeTimeOptions, CanvasOptions } from './mod
 export function parseQueryString(query : string) : DeepPartial<AppOptions> {
     const
         params = new URLSearchParams(query),
-        escapeTime : DeepPartial<EscapeTimeOptions> = {
+        canvas : DeepPartial<CanvasMgrOptions> = {
+            center: {
+                re: params.has('center_re') ? +params.get('center_re')! : undefined,
+                im: params.has('center_im') ? +params.get('center_im')! : undefined
+            },
+            chunkDelta: {
+                re: params.has('chunk_delta_re') ? +params.get('chunk_delta_re')! : undefined,
+                im: params.has('chunk_delta_im') ? +params.get('chunk_delta_im')! : undefined
+            }
+        },
+        escapeTime : DeepPartial<EscapeTimeRunnerOptions> = {
             c: {
                 re: params.has('c_re') ? +params.get('c_re')! : undefined,
                 im: params.has('c_im') ? +params.get('c_im')! : undefined
@@ -15,18 +29,14 @@ export function parseQueryString(query : string) : DeepPartial<AppOptions> {
             maxIter: params.has('max_iter') ? +params.get('max_iter')! : undefined,
             escapeRadius: params.has('escape_radius') ? +params.get('escape_radius')! : undefined
         },
-        canvas : DeepPartial<CanvasOptions> = {
-            topLeft: {
-                re: params.has('top_left_re') ? +params.get('top_left_re')! : undefined,
-                im: params.has('top_left_im') ? +params.get('top_left_im')! : undefined
-            },
-            bottomRight: {
-                re: params.has('bottom_right_re') ? +params.get('bottom_right_re')! : undefined,
-                im: params.has('bottom_right_im') ? +params.get('bottom_right_im')! : undefined
-            }
+        includedColor = params.has('color_in')  ? RGB.parse(params.get('color_in')!)  : null,
+        excludedColor = params.has('color_out') ? RGB.parse(params.get('color_out')!) : null,
+        imager : DeepPartial<ImagerOptions> = {
+            includedColor: includedColor ? includedColor : undefined,
+            excludedColor: excludedColor ? excludedColor : undefined
         };
 
-    return { escapeTime, canvas };
+    return { canvas, escapeTime, imager };
 }
 
 /**
@@ -36,14 +46,16 @@ export function parseQueryString(query : string) : DeepPartial<AppOptions> {
 export function formatQueryString(opts : AppOptions) {
     const params = new URLSearchParams();
 
+    params.set('center_re', '' + opts.canvas.center.re);
+    params.set('center_im', '' + opts.canvas.center.im);
+    params.set('chunk_delta_re', '' + opts.canvas.chunkDelta.re);
+    params.set('chunk_delta_im', '' + opts.canvas.chunkDelta.im);
     params.set('c_re', '' + opts.escapeTime.c.re);
     params.set('c_im', '' + opts.escapeTime.c.im);
     params.set('max_iter', '' + opts.escapeTime.maxIter);
     params.set('escape_radius', '' + opts.escapeTime.escapeRadius);
-    params.set('top_left_re', '' + opts.canvas.topLeft.re);
-    params.set('top_left_im', '' + opts.canvas.topLeft.im);
-    params.set('bottom_right_re', '' + opts.canvas.bottomRight.re);
-    params.set('bottom_right_im', '' + opts.canvas.bottomRight.im);
+    params.set('color_in',  '' + opts.imager.includedColor);
+    params.set('color_out', '' + opts.imager.excludedColor);
 
     return params.toString();
 }

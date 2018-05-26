@@ -1,4 +1,4 @@
-import { MessageToWorker, IWorkerInitMsg, IRunParamsUpdateMsg, IStartupFailureMsg } from '../shared/messages';
+import { MessageToWorker, IWorkerInitMsg, WorkerInstructionMsg, IStartupFailureMsg } from '../shared/messages';
 import { MemoryPool } from '../shared/memoryPool';
 // Import WorkerCore synchronously, but we won't actually construct one until we make sure our wasm is booted.
 // This is a workaround for the fact that webpack's bult-in wasm support currently can't import wasm into a
@@ -7,8 +7,7 @@ import { WorkerCore } from './workerCore';
 import { booted } from './wasm/julia_wasm_bg';
 
 let resolveWorkerInitMsg = null as ((msg : IWorkerInitMsg) => void) | null,
-    resolveEnsureRunParams = null as (() => void) | null,
-    initialRunParams = null as IRunParamsUpdateMsg | null,
+    initialInstructions = [] as WorkerInstructionMsg[],
     workerCore = null as WorkerCore | null;
 
 // Put bootstrapping code behind Promises.
@@ -16,21 +15,15 @@ let resolveWorkerInitMsg = null as ((msg : IWorkerInitMsg) => void) | null,
 // takes over processing.
 const
     getWorkerInitMsg = new Promise<IWorkerInitMsg>(resolve => resolveWorkerInitMsg = resolve),
-    ensureRunParams = new Promise<void>(resolve => resolveEnsureRunParams = resolve),
     initWorkerCore = (async () => {
         const initMsg = await getWorkerInitMsg;
 
-        await ensureRunParams;
         // Ensure wasm is booted before constructing workerCore.
         await booted;
 
-        workerCore = new WorkerCore(
-            initMsg.worker,
-            initialRunParams!.escapeTime,
-            initialRunParams!.canvas,
-            initialRunParams!.buffers
-        );
-        initialRunParams = null;
+        workerCore = new WorkerCore(initMsg);
+        initialInstructions.forEach(msg => workerCore!.onmessage(msg));
+        initialInstructions = [];
     })();
 
 initWorkerCore.catch(err => {
@@ -46,21 +39,14 @@ initWorkerCore.catch(err => {
 });
 
 onmessage = ev => {
-    const data = ev.data as MessageToWorker;
-    if (data.type === 'worker-init') {
+    const msg = ev.data as MessageToWorker;
+    if (msg.type === 'worker-init') {
         if (resolveWorkerInitMsg) {
-            resolveWorkerInitMsg(data);
+            resolveWorkerInitMsg(msg);
             resolveWorkerInitMsg = null;
         }
-    } else if (data.type === 'run-params-update') {
-        if (workerCore) {
-            workerCore.update(data.escapeTime, data.canvas, data.buffers);
-        } else {
-            initialRunParams = data;
-            if (resolveEnsureRunParams) {
-                resolveEnsureRunParams();
-                resolveEnsureRunParams = null;
-            }
-        }
+    } else {
+        if (workerCore) workerCore.onmessage(msg);
+        else initialInstructions.push(msg);
     }
 };

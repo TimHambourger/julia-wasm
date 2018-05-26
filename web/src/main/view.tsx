@@ -1,12 +1,12 @@
 import S from 's-js';
 import * as Surplus from 'surplus';
-import { App, ChunkSize } from './model';
+import { ChunkSizePx } from './canvasMgr';
+import { App } from './app';
 
-export const AppView = ({ app } : { app : App }) =>
+export const AppView = ({ app, mounted } : { app : App, mounted : () => boolean }) =>
     <div class="app">
         <Settings app={app} />
-        <Canvas app={app} />
-        <div></div>
+        <Canvas app={app} mounted={mounted} />
     </div>;
 
 let Settings = ({ app } : { app : App }) =>
@@ -14,28 +14,28 @@ let Settings = ({ app } : { app : App }) =>
         <span class="setting-c">
             <label>c</label>
             <input
-                value={app.escapeTime.c.re()}
-                onChange={e => app.escapeTime.c.re(+e.currentTarget.value)}
+                value={app.runner.c.re()}
+                onChange={e => app.runner.c.re(+e.currentTarget.value)}
             />
             {' + '}
             <input
-                value={app.escapeTime.c.im()}
-                onChange={e => app.escapeTime.c.im(+e.currentTarget.value)}
+                value={app.runner.c.im()}
+                onChange={e => app.runner.c.im(+e.currentTarget.value)}
             />
             i
         </span>
         <span class="setting-max-iter">
             <label>Max. iter.</label>
             <input
-                value={app.escapeTime.maxIter()}
-                onChange={e => app.escapeTime.maxIter(+e.currentTarget.value)}
+                value={app.runner.maxIter()}
+                onChange={e => app.runner.maxIter(+e.currentTarget.value)}
             />
         </span>
         <span class="setting-escape-radius">
             <label>Escape Radius</label>
             <input
-                value={app.escapeTime.escapeRadius()}
-                onChange={e => app.escapeTime.escapeRadius(+e.currentTarget.value)}
+                value={app.runner.escapeRadius()}
+                onChange={e => app.runner.escapeRadius(+e.currentTarget.value)}
             />
         </span>
         <ZoomButtons app={app} />
@@ -43,15 +43,17 @@ let Settings = ({ app } : { app : App }) =>
 
 let ZoomButtons = ({ app } : { app : App }) =>
     <div>
-        <span onClick={() => app.canvas.zoom({ re: 1.1, im: 1.1 })}>+</span>
-        <span onClick={() => app.canvas.zoom({ re: 0.9, im: 0.9 })}>-</span>
+        <span onClick={() => app.canvasMgr.zoom({ re: 1.1, im: 1.1 })}>+</span>
+        <span onClick={() => app.canvasMgr.zoom({ re: 0.9, im: 0.9 })}>-</span>
     </div>;
 
-let Canvas = ({ app } : { app : App }) =>
+let Canvas = ({ app, mounted } : { app : App, mounted : () => boolean }) =>
     <canvas
-        fn={renderJuliaImage(app)}
-        width={app.canvas.canvasWidthChunks() * ChunkSize.widthPx}
-        height={app.canvas.canvasHeightChunks() * ChunkSize.heightPx}
+        fn0={reportsSizing(app, mounted)}
+        fn1={rendersJuliaImage(app)}
+        // We'll use logical px for our canvas coordinates
+        width={app.canvasMgr.canvasSizeLogicalPx.width() || undefined}
+        height={app.canvasMgr.canvasSizeLogicalPx.height() || undefined}
         style={{
             // TODO: Dynamic sizing based on screen size
             width: '400px',
@@ -59,22 +61,55 @@ let Canvas = ({ app } : { app : App }) =>
         }}
     />;
 
-let renderJuliaImage = (app : App) => (canvas : HTMLCanvasElement) => {
-    const ctx = canvas.getContext('2d')!;
+let reportsSizing = (app : App, mounted : () => boolean) => (canvas : HTMLCanvasElement) => {
+    if (mounted()) {
+        updateCanvasMgrSizing();
 
-    for (let row = 0; row < app.canvas.canvasWidthChunks(); row++) {
-        for (let col = 0; col < app.canvas.canvasHeightChunks(); col++) {
+        let timeout : number | null = null;
+        const onresize = () => {
+            if (timeout !== null) clearTimeout(timeout);
+            timeout = setTimeout(updateCanvasMgrSizing, 150);
+        };
+        window.addEventListener('resize', onresize);
+        S.cleanup(() => window.removeEventListener('resize', onresize));
+    }
+
+    function updateCanvasMgrSizing() {
+        const rect = canvas.getBoundingClientRect();
+        app.canvasMgr.canvasSizeBrowserPx.width(rect.width);
+        app.canvasMgr.canvasSizeBrowserPx.height(rect.height);
+    }
+};
+
+let rendersJuliaImage = (app : App) => (canvas : HTMLCanvasElement) => {
+    const
+        ctx = canvas.getContext('2d')!,
+        originOffsetPx = {
+            x: app.canvasMgr.originOffsetPx.x(),
+            y: app.canvasMgr.originOffsetPx.y()
+        },
+        canvasRect = app.canvasMgr.canvasRect();
+
+    if (originOffsetPx.x === null || originOffsetPx.y === null || !canvasRect) return;
+
+    for (let row = 0; row < canvasRect.widthChunks; row++) {
+        for (let col = 0; col < canvasRect.heightChunks; col++) {
+            const
+                chunkId = {
+                    re: canvasRect.topLeft.re + row,
+                    im: canvasRect.topLeft.im + col
+                },
+                topLeftCanvasCoords = {
+                    x: chunkId.re * ChunkSizePx.width  + originOffsetPx.x,
+                    y: chunkId.im * ChunkSizePx.height + originOffsetPx.y
+                };
+
             // Each canvas chunk gets its own computation that renders that chunk
             S(() => {
-                const
-                    z = {
-                        re: app.canvas.topLeft.re() + col * (app.canvas.bottomRight.re() - app.canvas.topLeft.re()) / app.canvas.canvasWidthChunks(),
-                        im: app.canvas.topLeft.im() + row * (app.canvas.bottomRight.im() - app.canvas.topLeft.im()) / app.canvas.canvasHeightChunks()
-                    },
-                    imageData = app.imageData().get(z)();
+                const imageData = app.imager.imageData().get(chunkId)();
 
-                if (imageData) ctx.putImageData(imageData, col * ChunkSize.widthPx, row * ChunkSize.heightPx);
-                else ctx.clearRect(col * ChunkSize.widthPx, row * ChunkSize.heightPx, ChunkSize.widthPx, ChunkSize.heightPx);
+                if (imageData) ctx.putImageData(imageData, topLeftCanvasCoords.x, topLeftCanvasCoords.y);
+                else ctx.clearRect(topLeftCanvasCoords.x, topLeftCanvasCoords.y, ChunkSizePx.width, ChunkSizePx.height);
             });
         }
     }

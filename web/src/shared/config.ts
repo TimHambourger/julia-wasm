@@ -4,9 +4,9 @@ export interface IWorkerConfig {
     /**
      * The size of the chunks that will be sent from the worker to the main thread.
      */
-    chunkSize : {
-        widthPx : number;
-        heightPx : number;
+    chunkSizePx : {
+        width : number;
+        height : number;
     };
 
     /**
@@ -24,12 +24,37 @@ export interface IEscapeTimeConfig {
 }
 
 export interface ICanvasConfig {
-    canvasWidthChunks : number;
-    canvasHeightChunks : number;
-    // We're agnostic to whether axes go from low to high or vice versa.
+    // We're agnostic as to whether axes go from low to high or vice versa.
     // Our invariants are that the real axis is horizontal, the imaginary
     // axis is vertical, and we'll fill output buffers from left to right
     // and from top to bottom.
+
+    /**
+     * Bottom right - top left for any given chunk.
+     * We're agnostic as to whether axes go from low to high or vice versa.
+     * Our invariants are that the real axis is horizontal, the imaginary
+     * axis is vertical, and we'll fill output buffers from left to right
+     * and from top to bottom.
+     */
+    chunkDelta : IComplex;
+    /**
+     * The complex coord for the top left corner of chunk 0 + 0i.
+     */
+    origin : IComplex;
+}
+
+export interface ICanvasRect {
+    /**
+     * Top left corner of rect, in integer number of chunks, with chunk
+     * ids increase from left to right and from top to bottom.
+     */
     topLeft : IComplex;
-    bottomRight : IComplex;
+    /**
+     * Width in chunks.
+     */
+    widthChunks : number;
+    /**
+     * Height in chunks.
+     */
+    heightChunks : number;
 }

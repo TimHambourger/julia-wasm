@@ -1,6 +1,87 @@
 /* tslint:disable */
 import * as wasm from './julia_wasm_bg';
 
+export class CanvasRect {
+
+                static __construct(ptr) {
+                    return new CanvasRect(ptr);
+                }
+
+                constructor(ptr) {
+                    this.ptr = ptr;
+                }
+
+            free() {
+                const ptr = this.ptr;
+                this.ptr = 0;
+                wasm.__wbg_canvasrect_free(ptr);
+            }
+        static new(arg0, arg1, arg2, arg3) {
+    return CanvasRect.__construct(wasm.canvasrect_new(arg0, arg1, arg2, arg3));
+}
+}
+
+export class EscapeTimeRunner {
+
+                static __construct(ptr) {
+                    return new EscapeTimeRunner(ptr);
+                }
+
+                constructor(ptr) {
+                    this.ptr = ptr;
+                }
+
+            free() {
+                const ptr = this.ptr;
+                this.ptr = 0;
+                wasm.__wbg_escapetimerunner_free(ptr);
+            }
+        static new(arg0, arg1) {
+    const ptr0 = arg0.ptr;
+    arg0.ptr = 0;
+    const ptr1 = arg1.ptr;
+    arg1.ptr = 0;
+    return EscapeTimeRunner.__construct(wasm.escapetimerunner_new(ptr0, ptr1));
+}
+push_job(arg0) {
+    const ptr0 = arg0.ptr;
+    arg0.ptr = 0;
+    return wasm.escapetimerunner_push_job(this.ptr, ptr0);
+}
+advance() {
+    return (wasm.escapetimerunner_advance(this.ptr)) !== 0;
+}
+current_re() {
+    return wasm.escapetimerunner_current_re(this.ptr);
+}
+current_im() {
+    return wasm.escapetimerunner_current_im(this.ptr);
+}
+load(arg0) {
+    return wasm.escapetimerunner_load(this.ptr, arg0.ptr);
+}
+}
+
+export class EscapeTime {
+
+                static __construct(ptr) {
+                    return new EscapeTime(ptr);
+                }
+
+                constructor(ptr) {
+                    this.ptr = ptr;
+                }
+
+            free() {
+                const ptr = this.ptr;
+                this.ptr = 0;
+                wasm.__wbg_escapetime_free(ptr);
+            }
+        static new(arg0, arg1, arg2, arg3) {
+    return EscapeTime.__construct(wasm.escapetime_new(arg0, arg1, arg2, arg3));
+}
+}
+
 export class Buffer {
 
                 static __construct(ptr) {
@@ -39,71 +120,8 @@ export class Canvas {
                 this.ptr = 0;
                 wasm.__wbg_canvas_free(ptr);
             }
-        static new(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
-    return Canvas.__construct(wasm.canvas_new(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7));
-}
-}
-
-export class EscapeTimeRunner {
-
-                static __construct(ptr) {
-                    return new EscapeTimeRunner(ptr);
-                }
-
-                constructor(ptr) {
-                    this.ptr = ptr;
-                }
-
-            free() {
-                const ptr = this.ptr;
-                this.ptr = 0;
-                wasm.__wbg_escapetimerunner_free(ptr);
-            }
-        static new(arg0, arg1) {
-    const ptr0 = arg0.ptr;
-    arg0.ptr = 0;
-    const ptr1 = arg1.ptr;
-    arg1.ptr = 0;
-    return EscapeTimeRunner.__construct(wasm.escapetimerunner_new(ptr0, ptr1));
-}
-update(arg0, arg1) {
-    const ptr0 = arg0.ptr;
-    arg0.ptr = 0;
-    const ptr1 = arg1.ptr;
-    arg1.ptr = 0;
-    return wasm.escapetimerunner_update(this.ptr, ptr0, ptr1);
-}
-has_next() {
-    return (wasm.escapetimerunner_has_next(this.ptr)) !== 0;
-}
-load_next(arg0) {
-    return wasm.escapetimerunner_load_next(this.ptr, arg0.ptr);
-}
-last_chunk_loaded_re() {
-    return wasm.escapetimerunner_last_chunk_loaded_re(this.ptr);
-}
-last_chunk_loaded_im() {
-    return wasm.escapetimerunner_last_chunk_loaded_im(this.ptr);
-}
-}
-
-export class EscapeTime {
-
-                static __construct(ptr) {
-                    return new EscapeTime(ptr);
-                }
-
-                constructor(ptr) {
-                    this.ptr = ptr;
-                }
-
-            free() {
-                const ptr = this.ptr;
-                this.ptr = 0;
-                wasm.__wbg_escapetime_free(ptr);
-            }
-        static new(arg0, arg1, arg2, arg3) {
-    return EscapeTime.__construct(wasm.escapetime_new(arg0, arg1, arg2, arg3));
+        static new(arg0, arg1, arg2, arg3, arg4, arg5) {
+    return Canvas.__construct(wasm.canvas_new(arg0, arg1, arg2, arg3, arg4, arg5));
 }
 }
 

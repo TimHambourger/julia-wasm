@@ -1,6 +1,9 @@
 export class MemoryPool {
     private stack : ArrayBuffer[];
 
+    // TODO: Allow specifying a limit on the number of buffers to keep.
+    // To allow memory usage to drop if needs reduce.
+
     constructor(
         // Size in bytes
         public readonly byteLength : number

@@ -1,9 +1,4 @@
-export interface RGB {
-    // All numbers from 0 to 255
-    r : number;
-    g : number;
-    b : number;
-}
+import { RGB } from './rgb';
 
 /**
  * A function that maps from a magnitude in the range 0.0 to 1.0, with 0

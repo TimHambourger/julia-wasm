@@ -1,7 +1,7 @@
-import { IWorkerConfig, ICanvasConfig, IEscapeTimeConfig } from '../shared/config';
-import { IChunkUpdateMsg } from '../shared/messages';
+import { IWorkerConfig } from '../shared/config';
+import { WorkerInstructionMsg, IWorkerInitMsg, IWorkerResetMsg, IAddJobsMsg, IChunkUpdateMsg } from '../shared/messages';
 import { MemoryPool } from '../shared/memoryPool';
-import { Buffer, Canvas, EscapeTimeRunner, EscapeTime } from './wasm/julia_wasm';
+import { Buffer, Canvas, CanvasRect, EscapeTime, EscapeTimeRunner } from './wasm/julia_wasm';
 import * as rawWasm from './wasm/julia_wasm_bg';
 
 // Basically, a Rust Vec<u16> represented as both an opaque Buffer object for passing
@@ -12,50 +12,119 @@ interface OutputBuffer {
 }
 
 export class WorkerCore {
+    private readonly workerConfig : IWorkerConfig;
     private readonly pool : MemoryPool;
     private readonly output : OutputBuffer;
-    private readonly runner : EscapeTimeRunner;
-    private resumeTimeout : number;
+    private runner : EscapeTimeRunner | null;
+    private dataGen : number | null;
+    private resumeTimeout : number | null;
+    private pendingMessages : WorkerInstructionMsg[];
 
     constructor(
-        private readonly workerConfig : IWorkerConfig,
-        private escapeTimeConfig : IEscapeTimeConfig,
-        private canvasConfig : ICanvasConfig,
-        earlyBuffers : ArrayBuffer[] | undefined
+        init : IWorkerInitMsg
     ) {
         const
-            { chunkSize: { widthPx, heightPx } } = workerConfig,
-            bufferSize = widthPx * heightPx,
+            { chunkSizePx: { width, height } } = init.worker,
+            bufferSize = width * height,
             buffer = Buffer.new(bufferSize);
 
+        this.workerConfig = init.worker;
         // Times 2 to convert from u16 to u8
         this.pool = new MemoryPool(bufferSize * 2);
-        if (earlyBuffers) this.pool.pushAll(earlyBuffers);
         this.output = {
             buffer,
             view: new Uint16Array(rawWasm.memory.buffer, buffer.as_ptr(), bufferSize),
         };
-        this.runner = EscapeTimeRunner.new(escapeTimeFactory(escapeTimeConfig), canvasFactory(workerConfig, canvasConfig));
-        this.resumeTimeout = setTimeout(() => this.resume(), 0);
+        this.runner = null;
+        this.dataGen = null;
+        this.resumeTimeout = null;
+        this.pendingMessages = [];
     }
 
-    update(escapeTimeConfig : IEscapeTimeConfig, canvasConfig : ICanvasConfig, returningBuffers : ArrayBuffer[] | undefined) {
-        this.escapeTimeConfig = escapeTimeConfig;
-        this.canvasConfig = canvasConfig;
-        this.runner.update(escapeTimeFactory(escapeTimeConfig), canvasFactory(this.workerConfig, canvasConfig));
-        if (returningBuffers) this.pool.pushAll(returningBuffers);
-        clearTimeout(this.resumeTimeout);
-        this.resumeTimeout = setTimeout(() => this.resume(), 0);
+    onmessage(msg : WorkerInstructionMsg) {
+        this.pendingMessages.push(msg);
+        this.setAlarm();
     }
 
-    private resume() {
+    private setAlarm() {
+        if (this.resumeTimeout !== null) clearTimeout(this.resumeTimeout);
+        this.resumeTimeout = setTimeout(() => {
+            this.processMessages();
+            this.runJobs();
+        });
+    }
+
+    private processMessages() {
+        // Sort by sequence number descending
+        this.pendingMessages.sort((msg1, msg2) => msg2.seqNo - msg1.seqNo);
+        const
+            // Find the index of the last worker reset msg by seqNo. I.e. the first in our descending sort.
+            resetMsgIdx = this.pendingMessages.findIndex(msg => msg.type === 'worker-reset'),
+            resetMsg = resetMsgIdx >= 0 ? this.pendingMessages[resetMsgIdx] : null,
+            // Add jobs messages sent before the most recent reset message get thrown away.
+            addJobsMsgs = resetMsgIdx >= 0 ? this.pendingMessages.slice(0, resetMsgIdx) : this.pendingMessages;
+
+        if (resetMsg) {
+            // We validated this above. Re-asserting here gets back strong typing w/o needing a brittle cast.
+            if (resetMsg.type !== 'worker-reset') throw new Error(`Unexpected reset msg type: ${resetMsg.type}`);
+            this.reset(resetMsg);
+        }
+
+        // Now sort by seq no ascending. We want to push jobs in the order they were sent.
+        addJobsMsgs.reverse();
+        addJobsMsgs.forEach(msg => {
+            // We validated this above. Re-asserting here gets back strong typing w/o needing a brittle cast.
+            if (msg.type === 'worker-reset') throw new Error(`Unexpected msg type: ${msg.type}`);
+            this.addJobs(msg);
+        });
+        this.pendingMessages = [];
+    }
+
+    private reset(msg : IWorkerResetMsg) {
+        if (this.runner) this.runner.free();
+        this.runner = EscapeTimeRunner.new(
+            EscapeTime.new(
+                msg.escapeTime.c.re,
+                msg.escapeTime.c.im,
+                msg.escapeTime.maxIter,
+                msg.escapeTime.escapeRadius
+            ),
+            Canvas.new(
+                this.workerConfig.chunkSizePx.width,
+                this.workerConfig.chunkSizePx.height,
+                msg.canvas.chunkDelta.re,
+                msg.canvas.chunkDelta.im,
+                msg.canvas.origin.re,
+                msg.canvas.origin.im
+            )
+        );
+        this.dataGen = msg.dataGen;
+    }
+
+    private addJobs(msg : IAddJobsMsg) {
+        if (this.runner) {
+            msg.jobs.forEach(job => {
+                this.runner!.push_job(CanvasRect.new(job.topLeft.re, job.topLeft.im, job.widthChunks, job.heightChunks));
+            });
+        }
+        if (msg.buffers) this.pool.pushAll(msg.buffers);
+    }
+
+    private runJobs() {
+        if (!this.runner || this.dataGen === null) return;
+
         const startTime = performance.now();
-        while (this.runner.has_next() && performance.now() - startTime < this.workerConfig.pauseInterval) {
-            this.runner.load_next(this.output.buffer);
+        // Track whether we exit while loop b/c we run out of chunks or out of time.
+        let paused = false;
+        // Continue processing until we hit pause interval or run out of chunks.
+        // Check pause interval BEFORE advancing runner so we don't advance runner w/o
+        // then loading chunk data.
+        while (!(paused = performance.now() - startTime >= this.workerConfig.pauseInterval) && this.runner.advance()) {
+            this.runner.load(this.output.buffer);
             const
-                z = {
-                    re: this.runner.last_chunk_loaded_re(),
-                    im: this.runner.last_chunk_loaded_im()
+                chunkId = {
+                    re: this.runner.current_re(),
+                    im: this.runner.current_im()
                 },
                 data = this.pool.acquire(),
                 view = new Uint16Array(data);
@@ -66,38 +135,15 @@ export class WorkerCore {
 
             const msg : IChunkUpdateMsg = {
                 type: 'chunk-update',
-                z,
-                data,
-                escapeTime: this.escapeTimeConfig,
-                canvas: this.canvasConfig
+                chunkId,
+                dataGen: this.dataGen,
+                data
             };
             postMessage(msg, [data]);
         }
 
-        if (this.runner.has_next()) {
-            this.resumeTimeout = setTimeout(() => this.resume(), 0);
-        }
+        // If we exited loop b/c we hit our pause interval, setAlarm to keep processing
+        // after giving onmessage events a chance to fire.
+        if (paused) this.setAlarm();
     }
-}
-
-function escapeTimeFactory(config : IEscapeTimeConfig) {
-    return EscapeTime.new(
-        config.c.re,
-        config.c.im,
-        config.maxIter,
-        config.escapeRadius
-    );
-}
-
-function canvasFactory(workerConfig : IWorkerConfig, canvasConfig : ICanvasConfig) {
-    return Canvas.new(
-        workerConfig.chunkSize.widthPx,
-        workerConfig.chunkSize.heightPx,
-        canvasConfig.canvasWidthChunks,
-        canvasConfig.canvasHeightChunks,
-        canvasConfig.topLeft.re,
-        canvasConfig.topLeft.im,
-        canvasConfig.bottomRight.re,
-        canvasConfig.bottomRight.im
-    );
 }
