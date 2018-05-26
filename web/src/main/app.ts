@@ -4,15 +4,16 @@ import { EscapeTimeRunner, EscapeTimeRunnerOptions } from './runner';
 import { Imager, ImagerOptions } from './imager';
 import { RGB } from './colorHandling/rgb';
 
+// NOTE: This version isn't fully general but works for what we need.
+// For a fuller solution that also covers arrays, see https://stackoverflow.com/a/49936686
+export type DeepPartial<T> = {
+    [K in keyof T]? : DeepPartial<T[K]>;
+};
+
 export interface AppOptions {
     canvas : CanvasMgrOptions;
     escapeTime : EscapeTimeRunnerOptions;
     imager : ImagerOptions;
-}
-
-// Partial application just goes two levels deep.
-export type AppOptionsPartial = {
-    [K in keyof AppOptions]? : Partial<AppOptions[K]>;
 }
 
 const CANVAS_DEFAULTS : CanvasMgrOptions = {
@@ -38,31 +39,50 @@ const IMAGER_DEFAULTS : ImagerOptions = {
     excludedColor: new RGB(0, 0, 0)
 };
 
-function applyDefaults(opts : AppOptionsPartial) : AppOptions {
+function applyDefaults(opts : DeepPartial<AppOptions>) : AppOptions {
     const
         canvasOpts = opts.canvas || {},
+        centerOpts = canvasOpts.center || {},
         escapeTimeOpts = opts.escapeTime || {},
-        imagerOpts = opts.imager || {};
+        cOpts = escapeTimeOpts.c || {},
+        imagerOpts = opts.imager || {},
+        includedColorOpts = imagerOpts.includedColor || {},
+        excludedColorOpts = imagerOpts.excludedColor || {};
+
     return {
         canvas: {
-            center: canvasOpts.center !== undefined ? canvasOpts.center : CANVAS_DEFAULTS.center,
+            center: {
+                re: centerOpts.re !== undefined ? centerOpts.re : CANVAS_DEFAULTS.center.re,
+                im: centerOpts.im !== undefined ? centerOpts.im : CANVAS_DEFAULTS.center.im
+            },
             zoom: canvasOpts.zoom !== undefined ? canvasOpts.zoom : CANVAS_DEFAULTS.zoom,
             resolution: canvasOpts.resolution !== undefined ? canvasOpts.resolution : CANVAS_DEFAULTS.resolution
         },
         escapeTime: {
-            c: escapeTimeOpts.c !== undefined ? escapeTimeOpts.c : ESCAPE_TIME_DEFAULTS.c,
+            c: {
+                re: cOpts.re !== undefined ? cOpts.re : ESCAPE_TIME_DEFAULTS.c.re,
+                im: cOpts.im !== undefined ? cOpts.im : ESCAPE_TIME_DEFAULTS.c.im
+            },
             maxIter: escapeTimeOpts.maxIter !== undefined ? escapeTimeOpts.maxIter : ESCAPE_TIME_DEFAULTS.maxIter,
             escapeRadius: escapeTimeOpts.escapeRadius !== undefined ? escapeTimeOpts.escapeRadius : ESCAPE_TIME_DEFAULTS.escapeRadius
         },
         imager: {
-            includedColor: imagerOpts.includedColor !== undefined ? imagerOpts.includedColor : IMAGER_DEFAULTS.includedColor,
-            excludedColor: imagerOpts.excludedColor !== undefined ? imagerOpts.excludedColor : IMAGER_DEFAULTS.excludedColor
+            includedColor: new RGB(
+                includedColorOpts.r !== undefined ? includedColorOpts.r : IMAGER_DEFAULTS.includedColor.r,
+                includedColorOpts.g !== undefined ? includedColorOpts.g : IMAGER_DEFAULTS.includedColor.g,
+                includedColorOpts.b !== undefined ? includedColorOpts.b : IMAGER_DEFAULTS.includedColor.b
+            ),
+            excludedColor: new RGB(
+                excludedColorOpts.r !== undefined ? excludedColorOpts.r : IMAGER_DEFAULTS.excludedColor.r,
+                excludedColorOpts.g !== undefined ? excludedColorOpts.g : IMAGER_DEFAULTS.excludedColor.g,
+                excludedColorOpts.b !== undefined ? excludedColorOpts.b : IMAGER_DEFAULTS.excludedColor.b
+            )
         }
     };
 }
 
 export type App = ReturnType<typeof App>;
-export function App(workerUrl : string, opts : AppOptionsPartial) {
+export function App(workerUrl : string, opts : DeepPartial<AppOptions>) {
     const
         { canvas: canvasMgrOpts, escapeTime: escapeTimeOpts, imager: imagerOpts } = applyDefaults(opts),
         canvasMgr = CanvasMgr(canvasMgrOpts),
@@ -85,7 +105,7 @@ export function App(workerUrl : string, opts : AppOptionsPartial) {
         };
     }
 
-    function updateOpts(opts : AppOptionsPartial) {
+    function updateOpts(opts : DeepPartial<AppOptions>) {
         const effective = applyDefaults(opts);
         S.freeze(() => {
             canvasMgr.updateOpts(effective.canvas);
