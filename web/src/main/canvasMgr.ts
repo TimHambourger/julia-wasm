@@ -142,12 +142,13 @@ export function CanvasMgr(opts : CanvasMgrOptions) {
 
     /**
      * Pan the displayed canvas.
-     * @param deltaBrowserPx The amount to pan specified in browser px
+     * @param deltaXBrowserPx The amount to pan horizontally specified in browser px
+     * @param deltaYBrowserPx The amount to pan vertically specified in browser px
      */
-    function pan(deltaBrowserPx : { x : number, y : number }) {
+    function pan(deltaXBrowserPx : number, deltaYBrowserPx : number ) {
         S.freeze(() => S.sample(() => {
-            center.re(center.re() + deltaBrowserPx.x * resolution() / ChunkSizePx.width  * chunkDelta.re());
-            center.im(center.im() + deltaBrowserPx.y * resolution() / ChunkSizePx.height * chunkDelta.im());
+            center.re(center.re() + deltaXBrowserPx * resolution() / ChunkSizePx.width  * chunkDelta.re());
+            center.im(center.im() + deltaYBrowserPx * resolution() / ChunkSizePx.height * chunkDelta.im());
         }));
     }
 

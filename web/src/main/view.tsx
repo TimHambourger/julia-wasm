@@ -1,5 +1,6 @@
-import S from 's-js';
+import S, { DataSignal } from 's-js';
 import * as Surplus from 'surplus';
+import * as cx from 'classnames';
 import { ChunkSizePx } from './canvasMgr';
 import { App } from './app';
 
@@ -47,12 +48,17 @@ let ZoomButtons = ({ app } : { app : App }) =>
         <span class="zoom-btn" onClick={() => app.canvasMgr.zoom(0.9)}>-</span>
     </div>;
 
-let Canvas = ({ app, mounted } : { app : App, mounted : () => boolean }) =>
-    <canvas
-        class="julia-canvas"
-        fn0={reportsSizing(app, mounted)}
-        fn1={rendersJuliaImage(app)}
-    />;
+let Canvas = ({ app, mounted } : { app : App, mounted : () => boolean }) => {
+    const panning = S.value(false);
+    return (
+        <canvas
+            class={cx('julia-canvas', { panning: panning() })}
+            fn0={reportsSizing(app, mounted)}
+            fn1={rendersJuliaImage(app)}
+            fn2={isDraggable(app, panning)}
+        />
+    );
+};
 
 let reportsSizing = (app : App, mounted : () => boolean) => (canvas : HTMLCanvasElement) => {
     if (mounted()) {
@@ -111,5 +117,37 @@ let rendersJuliaImage = (app : App) => (canvas : HTMLCanvasElement) => {
                 });
             }
         }
+    });
+};
+
+let isDraggable = (app : App, panning : DataSignal<boolean>) => (canvas : HTMLCanvasElement) => {
+    let lastClientX = 0, lastClientY = 0;
+
+    const
+        mouseDown = (e : MouseEvent) => {
+            // Avoid triggering on right click, ctrl-click, or any other modified click
+            if (e.button === 0 /* Main button */ && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+                panning(true);
+                lastClientX = e.clientX;
+                lastClientY = e.clientY;
+            }
+        },
+        mouseMove = (e : MouseEvent) => {
+            if (panning()) {
+                // Note reversed directions. Moving mouse to the left moves center real coord to the RIGHT, ditto for imaginary coord.
+                app.canvasMgr.pan(lastClientX - e.clientX, lastClientY - e.clientY);
+                lastClientX = e.clientX;
+                lastClientY = e.clientY;
+            }
+        },
+        mouseUp = () => panning(false);
+
+    canvas.addEventListener('mousedown', mouseDown);
+    canvas.addEventListener('mousemove', mouseMove);
+    canvas.addEventListener('mouseup'  , mouseUp  );
+    S.cleanup(() => {
+        canvas.removeEventListener('mousedown', mouseDown);
+        canvas.removeEventListener('mousemove', mouseMove);
+        canvas.removeEventListener('mouseup'  , mouseUp  );
     });
 };

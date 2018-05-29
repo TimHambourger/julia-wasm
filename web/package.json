@@ -13,10 +13,12 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "classnames": "^2.2.5",
     "s-js": "^0.4.8",
     "surplus": "^0.5.2"
   },
   "devDependencies": {
+    "@types/classnames": "^2.2.3",
     "@types/text-encoding": "0.0.32",
     "@types/webassembly-js-api": "0.0.1",
     "clean-webpack-plugin": "^0.1.19",

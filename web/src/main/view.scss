@@ -66,7 +66,14 @@ $settings-width: 150px;
 }
 
 .julia-canvas {
+    cursor: -webkit-grab;
+    cursor: grab;
     height: 100%;
     left: 0;
     width: calc(100% - #{$settings-width});
+
+    &.panning {
+        cursor: -webkit-grabbing;
+        cursor: grabbing;
+    }
 }
