@@ -1,7 +1,8 @@
 const
     path = require('path'),
     HtmlWebpackPlugin = require('html-webpack-plugin'),
-    CleanWebpackPlugin = require('clean-webpack-plugin');
+    CleanWebpackPlugin = require('clean-webpack-plugin'),
+    MiniCssExtractPlugin = require('mini-css-extract-plugin');
 
 // TODO: Whether to try to split into two tsconfig.json's...
 // There's complexity on both the webpack and vscode side.
@@ -19,11 +20,12 @@ const
 module.exports = {
     entry: {
         main: path.resolve(MAIN_SRC, './index.tsx'),
-        worker: path.resolve(WORKER_SRC, './index.ts')
+        worker: path.resolve(WORKER_SRC, './index.ts'),
+        styles: path.resolve(MAIN_SRC, './index.scss')
     },
     output: {
         path: DIST,
-        filename: 'js/[name].[chunkhash].js',
+        filename: process.env.NODE_ENV === 'production' ? '[name].[chunkhash].js' : '[name].js',
         globalObject: 'this'
     },
     resolve: {
@@ -36,7 +38,7 @@ module.exports = {
     // debugging through output JS
     devtool: false,
 
-    mode: "development",
+    mode: process.env.NODE_ENV === 'production' ? 'production' : 'development',
 
     module: {
         rules: [
@@ -44,37 +46,14 @@ module.exports = {
                 test: /\.tsx?$/,
                 loader: 'surplus-loader!ts-loader'
             },
-            /*
             {
-                test: /\.tsx?$/,
-                include: [MAIN_SRC, SHARED_SRC],
+                test: /\.scss$/,
                 use: [
-                    {
-                        loader: 'surplus-loader'
-                    },
-                    {
-                        loader: 'ts-loader',
-                        options: {
-                            instance: 'main',
-                            configFile: path.resolve(__dirname, './tsconfig.json')
-                        }
-                    }
-                ]
-            },
-            {
-                test: /\.ts$/,
-                include: [WORKER_SRC, SHARED_SRC],
-                use: [
-                    {
-                        loader: 'ts-loader',
-                        options: {
-                            instance: 'worker',
-                            configFile: path.resolve(__dirname, './tsconfig.worker.json')
-                        }
-                    }
+                    MiniCssExtractPlugin.loader,
+                    'css-loader',
+                    'sass-loader'
                 ]
             }
-            */
         ]
     },
 
@@ -85,8 +64,11 @@ module.exports = {
         }),
         new HtmlWebpackPlugin({
             template: 'src/index.html',
-            // Don't automatically inject script tags for our entries. We'll do this manually in our template.
+            // Don't automatically inject script/link tags for our entries. We'll do this manually in our template.
             inject: false
+        }),
+        new MiniCssExtractPlugin({
+            filename: process.env.NODE_ENV === 'production' ? '[name].[contenthash].css' : '[name].css'
         })
     ]
 };

@@ -1,0 +1,72 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font: {
+        family: 'Helvetica';
+        size: 13px;
+    }
+}
+
+.settings, .julia-canvas {
+    position: fixed;
+    top: 0;
+}
+
+$settings-width: 150px;
+
+.settings {
+    bottom: 0;
+    overflow: auto;
+    padding: 8px;
+    right: 0;
+    width: $settings-width;
+
+    %settings-box-border {
+        border: 1px solid #ddd {
+            radius: 4px;
+        }
+    }
+
+    .setting {
+        margin: 5px 0;
+
+        input {
+            @extend %settings-box-border;
+            padding: 4px;
+        }
+    }
+
+    .setting-label {
+        font-size: 14px;
+        display: block;
+        margin-bottom: 2px;
+    }
+
+    .setting-c {
+        input {
+            width: 50px;
+        }
+    }
+
+    .zoom-buttons {
+        .zoom-btn {
+            @extend %settings-box-border;
+            background: #eee;
+            cursor: pointer;
+            display: inline-block;
+            margin-right: 10px;
+            padding: 4px 0;
+            text-align: center;
+            user-select: none;
+            width: 30px;
+        }
+    }
+}
+
+.julia-canvas {
+    height: 100%;
+    left: 0;
+    width: calc(100% - #{$settings-width});
+}

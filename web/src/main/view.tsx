@@ -11,8 +11,8 @@ export const AppView = ({ app, mounted } : { app : App, mounted : () => boolean 
 
 let Settings = ({ app } : { app : App }) =>
     <div class="settings">
-        <span class="setting-c">
-            <label>c</label>
+        <div class="setting setting-c">
+            <label class="setting-label">c</label>
             <input
                 value={app.runner.c.re()}
                 onChange={e => app.runner.c.re(+e.currentTarget.value)}
@@ -22,56 +22,44 @@ let Settings = ({ app } : { app : App }) =>
                 value={app.runner.c.im()}
                 onChange={e => app.runner.c.im(+e.currentTarget.value)}
             />
-            i
-        </span>
-        <span class="setting-max-iter">
-            <label>Max. iter.</label>
+            {' i'}
+        </div>
+        <div class="setting setting-max-iter">
+            <label class="setting-label">Max. iter.</label>
             <input
                 value={app.runner.maxIter()}
                 onChange={e => app.runner.maxIter(+e.currentTarget.value)}
             />
-        </span>
-        <span class="setting-escape-radius">
-            <label>Escape Radius</label>
+        </div>
+        <div class="setting setting-escape-radius">
+            <label class="setting-label">Escape Radius</label>
             <input
                 value={app.runner.escapeRadius()}
                 onChange={e => app.runner.escapeRadius(+e.currentTarget.value)}
             />
-        </span>
+        </div>
         <ZoomButtons app={app} />
     </div>;
 
 let ZoomButtons = ({ app } : { app : App }) =>
-    <div>
-        <span onClick={() => app.canvasMgr.zoom(1.1)}>+</span>
-        <span onClick={() => app.canvasMgr.zoom(0.9)}>-</span>
+    <div class="zoom-buttons">
+        <span class="zoom-btn" onClick={() => app.canvasMgr.zoom(1.1)}>+</span>
+        <span class="zoom-btn" onClick={() => app.canvasMgr.zoom(0.9)}>-</span>
     </div>;
 
 let Canvas = ({ app, mounted } : { app : App, mounted : () => boolean }) =>
     <canvas
+        class="julia-canvas"
         fn0={reportsSizing(app, mounted)}
         fn1={rendersJuliaImage(app)}
-        // We'll use logical px for our canvas coordinates
-        width={app.canvasMgr.canvasSizeLogicalPx.width() || undefined}
-        height={app.canvasMgr.canvasSizeLogicalPx.height() || undefined}
-        style={{
-            // TODO: Dynamic sizing based on screen size
-            width: '400px',
-            height: '400px'
-        }}
     />;
 
 let reportsSizing = (app : App, mounted : () => boolean) => (canvas : HTMLCanvasElement) => {
     if (mounted()) {
         updateCanvasMgrSizing();
 
-        let timeout : number | null = null;
-        const onresize = () => {
-            if (timeout !== null) clearTimeout(timeout);
-            timeout = setTimeout(updateCanvasMgrSizing, 150);
-        };
-        window.addEventListener('resize', onresize);
-        S.cleanup(() => window.removeEventListener('resize', onresize));
+        window.addEventListener('resize', updateCanvasMgrSizing);
+        S.cleanup(() => window.removeEventListener('resize', updateCanvasMgrSizing));
     }
 
     function updateCanvasMgrSizing() {
@@ -82,35 +70,46 @@ let reportsSizing = (app : App, mounted : () => boolean) => (canvas : HTMLCanvas
 };
 
 let rendersJuliaImage = (app : App) => (canvas : HTMLCanvasElement) => {
-    const
-        ctx = canvas.getContext('2d')!,
-        originOffsetPx = {
-            x: app.canvasMgr.originOffsetPx.x(),
-            y: app.canvasMgr.originOffsetPx.y()
-        },
-        canvasRect = app.canvasMgr.canvasRect();
+    // Setting a canvas's width or height properties clears the canvas.
+    // So we need to redraw the Julia image after any change to the canvas's logical size.
+    // That's why we set width and height imperatively here, rather than using width and
+    // height attributes in the <canvas ... /> jsx element above. The surplus-generated computations
+    // for attributes don't give the needed control over timing, and lead to the canvas getting cleared
+    // occasionally during resizing.
+    if (app.canvasMgr.canvasSizeLogicalPx.width()  !== null) canvas.width  = app.canvasMgr.canvasSizeLogicalPx.width()!;
+    if (app.canvasMgr.canvasSizeLogicalPx.height() !== null) canvas.height = app.canvasMgr.canvasSizeLogicalPx.height()!;
 
-    if (originOffsetPx.x === null || originOffsetPx.y === null || !canvasRect) return;
+    S(() => {
+        const
+            ctx = canvas.getContext('2d')!,
+            originOffsetPx = {
+                x: app.canvasMgr.originOffsetPx.x(),
+                y: app.canvasMgr.originOffsetPx.y()
+            },
+            canvasRect = app.canvasMgr.canvasRect();
 
-    for (let row = 0; row < canvasRect.widthChunks; row++) {
-        for (let col = 0; col < canvasRect.heightChunks; col++) {
-            const
-                chunkId = {
-                    re: canvasRect.topLeft.re + row,
-                    im: canvasRect.topLeft.im + col
-                },
-                topLeftCanvasCoords = {
-                    x: chunkId.re * ChunkSizePx.width  + originOffsetPx.x,
-                    y: chunkId.im * ChunkSizePx.height + originOffsetPx.y
-                };
+        if (originOffsetPx.x === null || originOffsetPx.y === null || !canvasRect) return;
 
-            // Each canvas chunk gets its own computation that renders that chunk
-            S(() => {
-                const imageData = app.imager.imageData().get(chunkId)();
+        for (let row = 0; row < canvasRect.widthChunks; row++) {
+            for (let col = 0; col < canvasRect.heightChunks; col++) {
+                const
+                    chunkId = {
+                        re: canvasRect.topLeft.re + row,
+                        im: canvasRect.topLeft.im + col
+                    },
+                    topLeftCanvasCoords = {
+                        x: chunkId.re * ChunkSizePx.width  + originOffsetPx.x,
+                        y: chunkId.im * ChunkSizePx.height + originOffsetPx.y
+                    };
 
-                if (imageData) ctx.putImageData(imageData, topLeftCanvasCoords.x, topLeftCanvasCoords.y);
-                else ctx.clearRect(topLeftCanvasCoords.x, topLeftCanvasCoords.y, ChunkSizePx.width, ChunkSizePx.height);
-            });
+                // Each canvas chunk gets its own computation that renders that chunk
+                S(() => {
+                    const imageData = app.imager.imageData().get(chunkId)();
+
+                    if (imageData) ctx.putImageData(imageData, topLeftCanvasCoords.x, topLeftCanvasCoords.y);
+                    else ctx.clearRect(topLeftCanvasCoords.x, topLeftCanvasCoords.y, ChunkSizePx.width, ChunkSizePx.height);
+                });
+            }
         }
-    }
+    });
 };
