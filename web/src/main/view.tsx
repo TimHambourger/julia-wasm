@@ -56,6 +56,7 @@ let Canvas = ({ app, mounted } : { app : App, mounted : () => boolean }) => {
             fn0={reportsSizing(app, mounted)}
             fn1={rendersJuliaImage(app)}
             fn2={isDraggable(app, panning)}
+            fn3={isZoomable(app)}
         />
     );
 };
@@ -150,4 +151,21 @@ let isDraggable = (app : App, panning : DataSignal<boolean>) => (canvas : HTMLCa
         canvas.removeEventListener('mousemove', mouseMove);
         canvas.removeEventListener('mouseup'  , mouseUp  );
     });
+};
+
+const ZOOM_SENSITIVITY = 1 / 200;
+
+let isZoomable = (app : App) => (canvas : HTMLCanvasElement) => {
+    const mouseWheel = (e : WheelEvent) => {
+        e.preventDefault();
+        // TODO: This needs more cross-browser and cross-platform testing.
+        // Testing for e.ctrlKey does a good job of distinguishing pinch-to-zoom from other two-fingered
+        // trackpad gestures using trackpad on Chrome and FF on OSX.
+        if (e.deltaMode === WheelEvent.DOM_DELTA_PIXEL && e.ctrlKey) {
+            app.canvasMgr.zoom(Math.exp(-ZOOM_SENSITIVITY * e.deltaY));
+        }
+    };
+
+    canvas.addEventListener('wheel', mouseWheel);
+    S.cleanup(() => canvas.removeEventListener('wheel', mouseWheel));
 };
