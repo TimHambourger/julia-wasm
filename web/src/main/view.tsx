@@ -144,12 +144,12 @@ let isDraggable = (app : App, panning : DataSignal<boolean>) => (canvas : HTMLCa
         mouseUp = () => panning(false);
 
     canvas.addEventListener('mousedown', mouseDown);
-    canvas.addEventListener('mousemove', mouseMove);
-    canvas.addEventListener('mouseup'  , mouseUp  );
+    document.addEventListener('mousemove', mouseMove);
+    document.addEventListener('mouseup'  , mouseUp  );
     S.cleanup(() => {
         canvas.removeEventListener('mousedown', mouseDown);
-        canvas.removeEventListener('mousemove', mouseMove);
-        canvas.removeEventListener('mouseup'  , mouseUp  );
+        document.removeEventListener('mousemove', mouseMove);
+        document.removeEventListener('mouseup'  , mouseUp  );
     });
 };
 
