@@ -153,19 +153,62 @@ let isDraggable = (app : App, panning : DataSignal<boolean>) => (canvas : HTMLCa
     });
 };
 
-const ZOOM_SENSITIVITY = 1 / 200;
+// Constants and isZoomable logic below adapted from mapbox-gl-js, Copyright (c) 2016, Mapbox
+// See https://github.com/mapbox/mapbox-gl-js/blob/0de15ab814dcd754d8923f0c1b4e7304a6b088a4/src/ui/handler/scroll_zoom.js
+const
+    // On Chrome, using true mouse wheel, wheel deltas apparently come in multiples of this factor
+    WHEEL_ZOOM_DELTA = 4.000244140625,
+    // For converting btwn DOM_DELTA_LINE and DOM_DELTA_PIXEL
+    PX_PER_DOM_DELTA_LINE = 40,
+    ZOOM_SENSITIVITY_TRACKPAD = 1 / 300,
+    ZOOM_SENSITIVITY_WHEEL = 1 / 450,
+    ZOOM_FRAME_RATE_MS = 10;
 
 let isZoomable = (app : App) => (canvas : HTMLCanvasElement) => {
-    const mouseWheel = (e : WheelEvent) => {
-        e.preventDefault();
-        // TODO: This needs more cross-browser and cross-platform testing.
-        // Testing for e.ctrlKey does a good job of distinguishing pinch-to-zoom from other two-fingered
-        // trackpad gestures using trackpad on Chrome and FF on OSX.
-        if (e.deltaMode === WheelEvent.DOM_DELTA_PIXEL && e.ctrlKey) {
-            app.canvasMgr.zoom(Math.exp(-ZOOM_SENSITIVITY * e.deltaY));
-        }
-    };
+    let device : 'wheel' | 'trackpad' | undefined,
+        delta = 0,
+        frameTimeout : number | undefined;
 
-    canvas.addEventListener('wheel', mouseWheel);
-    S.cleanup(() => canvas.removeEventListener('wheel', mouseWheel));
+    const
+        onMouseWheel = (e : WheelEvent) => {
+            e.preventDefault();
+            const thisDelta = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY * PX_PER_DOM_DELTA_LINE : e.deltaY;
+            delta += thisDelta;
+
+            // The idea of trying to distinguish btwn trackpad and true mouse wheel and having different sensitivities for each comes from Mapbox.
+            // I've slightly adapted the logic.
+            // Testing for divisibility by WHEEL_ZOOM_DELTA detects mouse wheel on Chrome.
+            // Meanwhile, DOM_DELTA_LINE is a reliable test on FF, while Chrome always uses DOM_DELTA_PIXEL.
+            // TODO: Is this worth it? Could instead use a fixed sensitivity factor somewhere in the middle.
+            // Needs more cross-platform testing.
+            if (thisDelta !== 0 && thisDelta % WHEEL_ZOOM_DELTA === 0 || e.deltaMode === WheelEvent.DOM_DELTA_LINE) device = 'wheel';
+            // Small deltas are apparently characteristic of trackpad for both Chrome and FF.
+            else if (thisDelta !== 0 && Math.abs(thisDelta) < 4) device = 'trackpad';
+
+            // Chunking wheel events into discrete "frames" helps smooth over timing differences btwn platforms/browsers/devices,
+            // and also gives us more chance to distinguish intentional zooms from accidental "blips".
+            if (frameTimeout === undefined) frameTimeout = setTimeout(onZoomFrame, ZOOM_FRAME_RATE_MS);
+        },
+        onZoomFrame = () => {
+            // If we haven't detected device by now, base it on speed.
+            device = device || (Math.abs(delta / ZOOM_FRAME_RATE_MS) > 20 ? 'wheel' : 'trackpad');
+
+            const
+                sensitivity = device === 'wheel' ? ZOOM_SENSITIVITY_WHEEL : ZOOM_SENSITIVITY_TRACKPAD,
+                exp = Math.abs(sensitivity * delta),
+                // Scale by sigmoid of scroll wheel delta. Use of sigmoid comes straight from Mapbox.
+                // But collapse scales close to 1 to exactly 1, to prevent repainting canvas for tiny zoom changes.
+                scale = exp < 0.04 ? 1 : Math.pow(2 / (1 + Math.exp(-exp)), delta <= 0 ? 1 : -1);
+
+            try {
+                app.canvasMgr.zoom(scale);
+            } finally {
+                device = undefined;
+                delta = 0;
+                frameTimeout = undefined;
+            }
+        };
+
+    canvas.addEventListener('wheel', onMouseWheel);
+    S.cleanup(() => canvas.removeEventListener('wheel', onMouseWheel));
 };
