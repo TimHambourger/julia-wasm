@@ -47,6 +47,10 @@ export class RGB {
     static eq(rgb1 : RGB, rgb2 : RGB) {
         return rgb1.r === rgb2.r && rgb1.g === rgb2.g && rgb1.b === rgb2.b;
     }
+
+    static invalid() {
+        return new RGB(NaN, NaN, NaN);
+    }
 }
 
 function parseHex(str : string) : number {

@@ -3,6 +3,7 @@ import { CanvasMgr, CanvasMgrOptions } from './canvasMgr';
 import { EscapeTimeRunner, EscapeTimeRunnerOptions } from './runner';
 import { Imager, ImagerOptions } from './imager';
 import { RGB } from './colorHandling/rgb';
+import { Settings } from './settings';
 
 // NOTE: This version isn't fully general but works for what we need.
 // For a fuller solution that also covers arrays, see https://stackoverflow.com/a/49936686
@@ -87,12 +88,14 @@ export function App(workerUrl : string, opts : DeepPartial<AppOptions>) {
         { canvas: canvasMgrOpts, escapeTime: escapeTimeOpts, imager: imagerOpts } = applyDefaults(opts),
         canvasMgr = CanvasMgr(canvasMgrOpts),
         runner = EscapeTimeRunner(canvasMgr, workerUrl, escapeTimeOpts),
-        imager = Imager(runner, imagerOpts);
+        imager = Imager(runner, imagerOpts),
+        settings = Settings(canvasMgr, runner, imager);
 
     return {
         canvasMgr,
         runner,
         imager,
+        settings,
         currentOpts,
         updateOpts
     };

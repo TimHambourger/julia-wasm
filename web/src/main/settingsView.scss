@@ -11,9 +11,14 @@
     .setting {
         margin: 5px 0;
 
-        input {
+        input, select {
             @extend %settings-box-border;
             padding: 4px;
+        }
+
+        select {
+            // B/c Chrome (and Safari) ignore vertical padding on select elements
+            height: 25px;
         }
     }
 
