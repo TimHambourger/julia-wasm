@@ -3,7 +3,7 @@ import { IComplex } from '../shared/IComplex';
 import { IEscapeTimeConfig, ICanvasConfig, ICanvasRect } from '../shared/config';
 import { IWorkerInitMsg, IWorkerResetMsg, IAddJobsMsg, MessageToMain } from '../shared/messages';
 import { MemoryPool } from '../shared/memoryPool';
-import { DataBundle, IBundle } from './dataBundle';
+import { DataBundle, IBundle } from './lib/dataBundle';
 import { CanvasMgr, ChunkSizePx } from './canvasMgr';
 
 export interface EscapeTimeRunnerOptions extends IEscapeTimeConfig {}
@@ -94,11 +94,12 @@ export function EscapeTimeRunner(canvasMgr : CanvasMgr, workerUrl : string, opts
             const
                 // Recycle buffers back to the worker
                 returningBuffers = pool.drain(),
+                canvasRect = canvasMgr.rect.canvasRect(),
                 jobs =
-                    canvasMgr.canvasRect() ?
+                    canvasRect ?
                         prev ?
-                            excludedRects(canvasMgr.canvasRect()!, prev) :
-                            [canvasMgr.canvasRect()!] :
+                            excludedRects(canvasRect, prev) :
+                            [canvasRect] :
                         [],
                 addJobsMsg : IAddJobsMsg = {
                     type: 'add-jobs',
@@ -107,7 +108,7 @@ export function EscapeTimeRunner(canvasMgr : CanvasMgr, workerUrl : string, opts
                     buffers: returningBuffers
                 };
             worker.postMessage(addJobsMsg, returningBuffers);
-            return canvasMgr.canvasRect();
+            return canvasRect;
         }, null);
     });
 

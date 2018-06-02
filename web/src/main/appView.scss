@@ -1,0 +1,29 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font: {
+        family: 'Helvetica';
+        size: 13px;
+    }
+}
+
+.settings, .julia-canvas {
+    position: fixed;
+    top: 0;
+}
+
+$settings-width: 150px;
+
+.settings {
+    bottom: 0;
+    right: 0;
+    width: $settings-width;
+}
+
+.julia-canvas {
+    height: 100%;
+    left: 0;
+    width: calc(100% - #{$settings-width});
+}

@@ -1,99 +1,115 @@
 import S, { DataSignal } from 's-js';
 import * as Surplus from 'surplus';
 import * as cx from 'classnames';
-import { ChunkSizePx } from './canvasMgr';
+import { IBundle } from './lib/dataBundle';
+import { draftSignal, DraftSignal } from './lib/draftSignal';
+import { ChunkSizePx, RectCalculations } from './canvasMgr';
 import { App } from './app';
 
-export const AppView = ({ app, mounted } : { app : App, mounted : () => boolean }) =>
-    <div class="app">
-        <Settings app={app} />
-        <Canvas app={app} mounted={mounted} />
-    </div>;
+export const CanvasView = ({ app, mounted } : { app : App, mounted : () => boolean }) => {
+    const
+        drafts = CanvasDrafts(app),
+        panning = S.value(false);
 
-let Settings = ({ app } : { app : App }) =>
-    <div class="settings">
-        <div class="setting setting-c">
-            <label class="setting-label">c</label>
-            <input
-                value={app.runner.c.re()}
-                onChange={e => app.runner.c.re(+e.currentTarget.value)}
-            />
-            {' + '}
-            <input
-                value={app.runner.c.im()}
-                onChange={e => app.runner.c.im(+e.currentTarget.value)}
-            />
-            {' i'}
-        </div>
-        <div class="setting setting-max-iter">
-            <label class="setting-label">Max. iter.</label>
-            <input
-                value={app.runner.maxIter()}
-                onChange={e => app.runner.maxIter(+e.currentTarget.value)}
-            />
-        </div>
-        <div class="setting setting-escape-radius">
-            <label class="setting-label">Escape Radius</label>
-            <input
-                value={app.runner.escapeRadius()}
-                onChange={e => app.runner.escapeRadius(+e.currentTarget.value)}
-            />
-        </div>
-        <ZoomButtons app={app} />
-    </div>;
-
-let ZoomButtons = ({ app } : { app : App }) =>
-    <div class="zoom-buttons">
-        <span class="zoom-btn" onClick={() => app.canvasMgr.zoom(1.1)}>+</span>
-        <span class="zoom-btn" onClick={() => app.canvasMgr.zoom(0.9)}>-</span>
-    </div>;
-
-let Canvas = ({ app, mounted } : { app : App, mounted : () => boolean }) => {
-    const panning = S.value(false);
     return (
         <canvas
             class={cx('julia-canvas', { panning: panning() })}
-            fn0={reportsSizing(app, mounted)}
-            fn1={rendersJuliaImage(app)}
-            fn2={isDraggable(app, panning)}
-            fn3={isZoomable(app)}
+            fn0={reportsSizing(app, drafts, mounted)}
+            fn1={rendersJuliaImage(app.imager.imageData, drafts.rect)}
+            fn2={isDraggable(app, drafts, panning)}
+            fn3={isZoomable(drafts)}
         />
     );
 };
 
-let reportsSizing = (app : App, mounted : () => boolean) => (canvas : HTMLCanvasElement) => {
-    if (mounted()) {
-        updateCanvasMgrSizing();
+// During transitions, we'll allow the view to "float" by having a canvas size,
+// zoom, or center different from the values defined in our model layer.
+// This enables smoother transitions when changing one of those values.
+// However, to be able to use the image data stored in the model layer, it's essential that
+// the view always use the same origin and chunkDelta as the model layer.
+// Those are needed to interpret the ChunkIds used by the model layer, and therefore can't "float."
+type CanvasDrafts = ReturnType<typeof CanvasDrafts>;
+const CanvasDrafts = (app : App) => {
+    const
+        canvasSizeBrowserPx = {
+            width:  draftSignal(app.canvasMgr.canvasSizeBrowserPx.width),
+            height: draftSignal(app.canvasMgr.canvasSizeBrowserPx.height)
+        },
+        zoom   = draftSignal(app.canvasMgr.zoom),
+        center = {
+            re: draftSignal(app.canvasMgr.center.re),
+            im: draftSignal(app.canvasMgr.center.im)
+        },
+        // Treat resolution as a function of our draft zoom and the model's chunkDelta.
+        // NOTE: We'd expect to get the same answer if we instead used ChunkSizePx.height together with chunkDelta.im.
+        resolution = () => ChunkSizePx.width  / zoom() / app.canvasMgr.chunkDelta.re(),
+        rect = RectCalculations({
+            origin: app.canvasMgr.origin,
+            chunkDelta: app.canvasMgr.chunkDelta,
+            canvasSizeBrowserPx,
+            resolution,
+            center
+        });
 
-        window.addEventListener('resize', updateCanvasMgrSizing);
-        S.cleanup(() => window.removeEventListener('resize', updateCanvasMgrSizing));
+    return {
+        canvasSizeBrowserPx,
+        zoom,
+        center,
+        resolution,
+        rect
+    };
+}
+
+const reportsSizing = (app : App, drafts : CanvasDrafts, mounted : () => boolean) => (canvas : HTMLCanvasElement) => {
+    if (mounted()) {
+        // On intial load, update model values directly
+        updateCanvasMgrSizing(app.canvasMgr.canvasSizeBrowserPx);
+
+        let timeout : number | undefined;
+
+        const onResize = () => {
+            // On resize, update draft values, then schedule an async commit
+            updateCanvasMgrSizing(drafts.canvasSizeBrowserPx);
+            if (timeout !== undefined) clearTimeout(timeout);
+            timeout = setTimeout(commit, 50);
+        };
+        window.addEventListener('resize', onResize);
+        S.cleanup(() => window.removeEventListener('resize', onResize));
     }
 
-    function updateCanvasMgrSizing() {
+    function updateCanvasMgrSizing({ width, height } : {
+        width : (val : number) => void,
+        height : (val : number) => void
+    }) {
         const rect = canvas.getBoundingClientRect();
-        app.canvasMgr.canvasSizeBrowserPx.width(rect.width);
-        app.canvasMgr.canvasSizeBrowserPx.height(rect.height);
+        width (rect.width );
+        height(rect.height);
+    }
+
+    function commit() {
+        drafts.canvasSizeBrowserPx.width .commit();
+        drafts.canvasSizeBrowserPx.height.commit();
     }
 };
 
-let rendersJuliaImage = (app : App) => (canvas : HTMLCanvasElement) => {
+const rendersJuliaImage = (imageData : () => IBundle<ImageData | null>, rect : RectCalculations) => (canvas : HTMLCanvasElement) => {
     // Setting a canvas's width or height properties clears the canvas.
     // So we need to redraw the Julia image after any change to the canvas's logical size.
     // That's why we set width and height imperatively here, rather than using width and
     // height attributes in the <canvas ... /> jsx element above. The surplus-generated computations
     // for attributes don't give the needed control over timing, and lead to the canvas getting cleared
     // occasionally during resizing.
-    if (app.canvasMgr.canvasSizeLogicalPx.width()  !== null) canvas.width  = app.canvasMgr.canvasSizeLogicalPx.width()!;
-    if (app.canvasMgr.canvasSizeLogicalPx.height() !== null) canvas.height = app.canvasMgr.canvasSizeLogicalPx.height()!;
+    if (rect.canvasSizeLogicalPx.width()  !== null) canvas.width  = rect.canvasSizeLogicalPx.width()!;
+    if (rect.canvasSizeLogicalPx.height() !== null) canvas.height = rect.canvasSizeLogicalPx.height()!;
 
     S(() => {
         const
             ctx = canvas.getContext('2d')!,
             originOffsetPx = {
-                x: app.canvasMgr.originOffsetPx.x(),
-                y: app.canvasMgr.originOffsetPx.y()
+                x: rect.originOffsetPx.x(),
+                y: rect.originOffsetPx.y()
             },
-            canvasRect = app.canvasMgr.canvasRect();
+            canvasRect = rect.canvasRect();
 
         if (originOffsetPx.x === null || originOffsetPx.y === null || !canvasRect) return;
 
@@ -111,9 +127,9 @@ let rendersJuliaImage = (app : App) => (canvas : HTMLCanvasElement) => {
 
                 // Each canvas chunk gets its own computation that renders that chunk
                 S(() => {
-                    const imageData = app.imager.imageData().get(chunkId)();
+                    const _imageData = imageData().get(chunkId)();
 
-                    if (imageData) ctx.putImageData(imageData, topLeftCanvasCoords.x, topLeftCanvasCoords.y);
+                    if (_imageData) ctx.putImageData(_imageData, topLeftCanvasCoords.x, topLeftCanvasCoords.y);
                     else ctx.clearRect(topLeftCanvasCoords.x, topLeftCanvasCoords.y, ChunkSizePx.width, ChunkSizePx.height);
                 });
             }
@@ -121,8 +137,8 @@ let rendersJuliaImage = (app : App) => (canvas : HTMLCanvasElement) => {
     });
 };
 
-let isDraggable = (app : App, panning : DataSignal<boolean>) => (canvas : HTMLCanvasElement) => {
-    let lastClientX = 0, lastClientY = 0;
+const isDraggable = (app : App, drafts : CanvasDrafts, panning : DataSignal<boolean>) => (canvas : HTMLCanvasElement) => {
+    let lastClientX = 0, lastClientY = 0, timeout : number | undefined;
 
     const
         mouseDown = (e : MouseEvent) => {
@@ -136,12 +152,29 @@ let isDraggable = (app : App, panning : DataSignal<boolean>) => (canvas : HTMLCa
         mouseMove = (e : MouseEvent) => {
             if (panning()) {
                 // Note reversed directions. Moving mouse to the left moves center real coord to the RIGHT, ditto for imaginary coord.
-                app.canvasMgr.pan(lastClientX - e.clientX, lastClientY - e.clientY);
+                const
+                    deltaX = lastClientX - e.clientX,
+                    deltaY = lastClientY - e.clientY;
+
                 lastClientX = e.clientX;
                 lastClientY = e.clientY;
+
+                S.freeze(() => S.sample(() => {
+                    drafts.center.re(drafts.center.re() + deltaX * drafts.resolution() / ChunkSizePx.width  * app.canvasMgr.chunkDelta.re());
+                    drafts.center.im(drafts.center.im() + deltaY * drafts.resolution() / ChunkSizePx.height * app.canvasMgr.chunkDelta.im());
+                }));
+
+                if (timeout === undefined) timeout = setTimeout(commit, 50);
             }
         },
-        mouseUp = () => panning(false);
+        mouseUp = () => panning(false),
+        commit = () => {
+            timeout = undefined;
+            S.freeze(() => {
+                drafts.center.re.commit();
+                drafts.center.im.commit();
+            });
+        };
 
     canvas.addEventListener('mousedown', mouseDown);
     document.addEventListener('mousemove', mouseMove);
@@ -162,12 +195,15 @@ const
     PX_PER_DOM_DELTA_LINE = 40,
     ZOOM_SENSITIVITY_TRACKPAD = 1 / 300,
     ZOOM_SENSITIVITY_WHEEL = 1 / 450,
-    ZOOM_FRAME_RATE_MS = 10;
+    ZOOM_FRAME_RATE_MS = 10,
+    // Make sure this is bigger than ZOOM_FRAME_RATE_MS
+    ZOOM_UPDATE_DELAY_MS = 60;
 
-let isZoomable = (app : App) => (canvas : HTMLCanvasElement) => {
+const isZoomable = (drafts : CanvasDrafts) => (canvas : HTMLCanvasElement) => {
     let device : 'wheel' | 'trackpad' | undefined,
         delta = 0,
-        frameTimeout : number | undefined;
+        frameTimeout : number | undefined,
+        commitTimeout : number | undefined;
 
     const
         onMouseWheel = (e : WheelEvent) => {
@@ -188,6 +224,8 @@ let isZoomable = (app : App) => (canvas : HTMLCanvasElement) => {
             // Chunking wheel events into discrete "frames" helps smooth over timing differences btwn platforms/browsers/devices,
             // and also gives us more chance to distinguish intentional zooms from accidental "blips".
             if (frameTimeout === undefined) frameTimeout = setTimeout(onZoomFrame, ZOOM_FRAME_RATE_MS);
+            if (commitTimeout !== undefined) clearTimeout(commitTimeout);
+            commitTimeout = setTimeout(() => drafts.zoom.commit(), ZOOM_UPDATE_DELAY_MS);
         },
         onZoomFrame = () => {
             // If we haven't detected device by now, base it on speed.
@@ -201,7 +239,11 @@ let isZoomable = (app : App) => (canvas : HTMLCanvasElement) => {
                 scale = exp < 0.04 ? 1 : Math.pow(2 / (1 + Math.exp(-exp)), delta <= 0 ? 1 : -1);
 
             try {
-                app.canvasMgr.zoom(scale);
+                drafts.zoom(drafts.zoom() * scale);
+                // For reasons I don't yet understand, drafting the zoom and scheduling an async commit
+                // works great when zooming in, but ends up looking slow and jittery when zooming out.
+                // So for now, commit immediately when zooming out, meaning we'll reset image data and clear canvas.
+                if (scale < 1) drafts.zoom.commit();
             } finally {
                 device = undefined;
                 delta = 0;

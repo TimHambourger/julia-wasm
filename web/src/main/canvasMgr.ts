@@ -39,7 +39,7 @@ export function CanvasMgr(opts : CanvasMgrOptions) {
             height: S.value<number | null>(null)
         },
         // Number of browser px per change of 1 in complex coordinates
-        zoomLevel = S.value(opts.zoom),
+        zoom = S.value(opts.zoom),
         // Ratio of logical px to browser px. Higher means more logical px per browser px.
         resolution = S.value(opts.resolution),
         // Center of the displayed canvas in complex coordinates
@@ -47,18 +47,99 @@ export function CanvasMgr(opts : CanvasMgrOptions) {
             re: S.value(opts.center.re),
             im: S.value(opts.center.im)
         },
+        // Initialize origin to match center, then reset to center whenever zoom or resolution change
+        originTrigger = () => {
+            zoom();
+            resolution();
+        },
         // Origin in the sense of WASM's Canvas struct.
         // Not necessarily the center of the displayed canvas.
         // Instead, the complex coordinates that correspond to ChunkId 0 + 0i.
         origin = {
-            re: S.value(opts.center.re),
-            im: S.value(opts.center.im)
+            re: S.on(originTrigger, () => center.re()),
+            im: S.on(originTrigger, () => center.im())
         },
         // Bottom right - top left in complex coordinates for any given chunk
         chunkDelta = {
-            re: () => ChunkSizePx.width  / zoomLevel() / resolution(),
-            im: () => ChunkSizePx.height / zoomLevel() / resolution()
+            re: () => ChunkSizePx.width  / zoom() / resolution(),
+            im: () => ChunkSizePx.height / zoom() / resolution()
         },
+        canvasConfig = S<ICanvasConfig>(() => ({
+            chunkDelta: {
+                re: chunkDelta.re(),
+                im: chunkDelta.im()
+            },
+            origin: {
+                re: origin.re(),
+                im: origin.im()
+            }
+        })),
+        rect = RectCalculations({
+            canvasSizeBrowserPx,
+            resolution,
+            center,
+            origin,
+            chunkDelta
+        });
+
+    return {
+        canvasSizeBrowserPx,
+        resolution,
+        zoom,
+        center,
+        origin,
+        chunkDelta,
+        canvasConfig,
+        rect,
+        currentOpts,
+        updateOpts
+    };
+
+    function currentOpts() : CanvasMgrOptions {
+        return {
+            center: {
+                re: center.re(),
+                im: center.im()
+            },
+            zoom: zoom(),
+            resolution: resolution()
+        };
+    }
+
+    function updateOpts(opts : CanvasMgrOptions) {
+        S.freeze(() => S.sample(() => {
+            center.re(opts.center.re);
+            center.im(opts.center.im);
+            zoom(opts.zoom);
+            resolution(opts.resolution);
+        }));
+    }
+}
+
+export interface ComplexSignals {
+    re : () => number;
+    im : () => number;
+}
+
+// Responsible for computing the current ICanvasRect
+export type RectCalculations = ReturnType<typeof RectCalculations>;
+export function RectCalculations({
+    canvasSizeBrowserPx,
+    resolution,
+    center,
+    origin,
+    chunkDelta
+} : {
+    canvasSizeBrowserPx : {
+        width  : () => number | null,
+        height : () => number | null
+    },
+    resolution : () => number,
+    center : ComplexSignals,
+    origin : ComplexSignals,
+    chunkDelta : ComplexSignals
+}) {
+    const
         // Size of canvas in (possibly fractional) logical px
         canvasSizeLogicalPx = {
             width:  () => canvasSizeBrowserPx.width()  === null ? null : canvasSizeBrowserPx.width()!  * resolution(),
@@ -86,16 +167,6 @@ export function CanvasMgr(opts : CanvasMgrOptions) {
             im: () => topLeftChunks.im() === null || canvasSizeLogicalPx.height() === null ? null :
                 topLeftChunks.im()! + canvasSizeLogicalPx.height()! / ChunkSizePx.height
         },
-        canvasConfig = S<ICanvasConfig>(() => ({
-            chunkDelta: {
-                re: chunkDelta.re(),
-                im: chunkDelta.im()
-            },
-            origin: {
-                re: origin.re(),
-                im: origin.im()
-            }
-        })),
         // Current canvas rect, specified in chunks.
         // Essentially, round up the size of the canvas in browser px to the nearest whole chunk.
         canvasRect = S<ICanvasRect | null>(() => {
@@ -114,66 +185,8 @@ export function CanvasMgr(opts : CanvasMgrOptions) {
         });
 
     return {
-        canvasSizeBrowserPx,
-        resolution,
         canvasSizeLogicalPx,
         originOffsetPx,
-        canvasConfig,
-        canvasRect,
-        zoom,
-        pan,
-        currentOpts,
-        updateOpts
+        canvasRect
     };
-
-    /**
-     * Zoom the canvas relative to its center point.
-     * @param scaleFactor A multiplier to apply to the current zoom level.
-     * 1 means preserve as is, > 1 means zoom in, and < 1 means zoom out.
-     */
-    function zoom(scaleFactor : number) {
-        S.freeze(() => S.sample(() => {
-            zoomLevel(zoomLevel() * scaleFactor);
-            // When zooming, also go ahead and reset origin to match current center
-            origin.re(center.re());
-            origin.im(center.im());
-        }));
-    }
-
-    /**
-     * Pan the displayed canvas.
-     * @param deltaXBrowserPx The amount to pan horizontally specified in browser px
-     * @param deltaYBrowserPx The amount to pan vertically specified in browser px
-     */
-    function pan(deltaXBrowserPx : number, deltaYBrowserPx : number ) {
-        S.freeze(() => S.sample(() => {
-            center.re(center.re() + deltaXBrowserPx * resolution() / ChunkSizePx.width  * chunkDelta.re());
-            center.im(center.im() + deltaYBrowserPx * resolution() / ChunkSizePx.height * chunkDelta.im());
-        }));
-    }
-
-    function currentOpts() : CanvasMgrOptions {
-        return {
-            center: {
-                re: center.re(),
-                im: center.im()
-            },
-            zoom: zoomLevel(),
-            resolution: resolution()
-        };
-    }
-
-    function updateOpts(opts : CanvasMgrOptions) {
-        S.freeze(() => S.sample(() => {
-            center.re(opts.center.re);
-            center.im(opts.center.im);
-            zoomLevel(opts.zoom);
-            resolution(opts.resolution);
-            // If zoom level or resolution is changing, go ahead and reset origin too
-            if (opts.zoom !== zoomLevel() || opts.resolution !== resolution()) {
-                origin.re(opts.center.re);
-                origin.im(opts.center.im);
-            }
-        }));
-    }
 }

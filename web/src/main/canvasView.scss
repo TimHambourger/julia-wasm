@@ -1,0 +1,9 @@
+.julia-canvas {
+    cursor: -webkit-grab;
+    cursor: grab;
+
+    &.panning {
+        cursor: -webkit-grabbing;
+        cursor: grabbing;
+    }
+}

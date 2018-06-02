@@ -1,10 +1,10 @@
 import S from 's-js';
 import * as Surplus from 'surplus';
 
-import { HashSignal } from './hashSignal';
+import { HashSignal } from './lib/hashSignal';
 import { parseQueryString, formatQueryString } from './queryHandler';
 import { App } from './app';
-import { AppView } from './view';
+import { AppView } from './appView';
 
 const
     mounted = S.data(false),

@@ -1,27 +1,6 @@
-* {
-    box-sizing: border-box;
-}
-
-body {
-    font: {
-        family: 'Helvetica';
-        size: 13px;
-    }
-}
-
-.settings, .julia-canvas {
-    position: fixed;
-    top: 0;
-}
-
-$settings-width: 150px;
-
 .settings {
-    bottom: 0;
     overflow: auto;
     padding: 8px;
-    right: 0;
-    width: $settings-width;
 
     %settings-box-border {
         border: 1px solid #ddd {
@@ -59,21 +38,9 @@ $settings-width: 150px;
             margin-right: 10px;
             padding: 4px 0;
             text-align: center;
+            -moz-user-select: none;
             user-select: none;
             width: 30px;
         }
-    }
-}
-
-.julia-canvas {
-    cursor: -webkit-grab;
-    cursor: grab;
-    height: 100%;
-    left: 0;
-    width: calc(100% - #{$settings-width});
-
-    &.panning {
-        cursor: -webkit-grabbing;
-        cursor: grabbing;
     }
 }

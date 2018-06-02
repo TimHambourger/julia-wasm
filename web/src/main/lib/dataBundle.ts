@@ -1,6 +1,5 @@
 import S, { DataSignal } from 's-js';
-import { IComplex } from '../shared/IComplex';
-import { MemoryPool } from '../shared/memoryPool';
+import { IComplex } from '../../shared/IComplex';
 
 export type SimpleMapFn<T, U>   = (data : T, chunkId : IComplex) => U;
 export type ReducingMapFn<T, U> = (data : T, chunkId : IComplex, prev : U) => U;
