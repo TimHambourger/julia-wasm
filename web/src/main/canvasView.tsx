@@ -1,6 +1,7 @@
 import S, { DataSignal } from 's-js';
 import * as Surplus from 'surplus';
 import * as cx from 'classnames';
+import { ICanvasRect } from '../shared/config';
 import { IBundle } from './lib/dataBundle';
 import { draftSignal, DraftSignal } from './lib/draftSignal';
 import { ChunkSizePx, RectCalculations } from './canvasMgr';
@@ -15,9 +16,10 @@ export const CanvasView = ({ app, mounted } : { app : App, mounted : () => boole
         <canvas
             class={cx('julia-canvas', { panning: panning() })}
             fn0={reportsSizing(app, drafts, mounted)}
-            fn1={rendersJuliaImage(app.imager.imageData, drafts.rect)}
-            fn2={isDraggable(app, drafts, panning)}
-            fn3={isZoomable(drafts)}
+            fn1={rendersJuliaImage(app, drafts)}
+            fn2={rendersOnZoomOut(app, drafts) as <U>(el : HTMLCanvasElement, prevBuffer : U | undefined) => any}
+            fn3={isDraggable(app, drafts, panning)}
+            fn4={isZoomable(drafts)}
         />
     );
 };
@@ -42,7 +44,9 @@ const CanvasDrafts = (app : App) => {
         },
         // Treat resolution as a function of our draft zoom and the model's chunkDelta.
         // NOTE: We'd expect to get the same answer if we instead used ChunkSizePx.height together with chunkDelta.im.
-        resolution = () => ChunkSizePx.width  / zoom() / app.canvasMgr.chunkDelta.re(),
+        // Also NOTE: We constrain the resolution to be no higher than the model layer's resolution. This is part of our
+        // perf fix for the zoom out case. See rendersOnZoomOut.
+        resolution = () => Math.min(ChunkSizePx.width  / zoom() / app.canvasMgr.chunkDelta.re(), app.canvasMgr.resolution()),
         rect = RectCalculations({
             origin: app.canvasMgr.origin,
             chunkDelta: app.canvasMgr.chunkDelta,
@@ -92,26 +96,40 @@ const reportsSizing = (app : App, drafts : CanvasDrafts, mounted : () => boolean
     }
 };
 
-const rendersJuliaImage = (imageData : () => IBundle<ImageData | null>, rect : RectCalculations) => (canvas : HTMLCanvasElement) => {
+// Default render method for all cases except while zooming out.
+// Zooming out gets its own specialized render method for performance reasons. See below.
+const rendersJuliaImage = (app : App, drafts : CanvasDrafts) => (canvas : HTMLCanvasElement) => {
+    if (drafts.zoom() < app.canvasMgr.zoom()) return;
+
+    const
+        { rect } = drafts,
+        canvasSizeLogicalPx = rect.canvasSizeLogicalPx.width() === null || rect.canvasSizeLogicalPx.height() === null ? null : {
+            width: rect.canvasSizeLogicalPx.width()!,
+            height: rect.canvasSizeLogicalPx.height()!
+        };
+
+    if (!canvasSizeLogicalPx) return;
+
     // Setting a canvas's width or height properties clears the canvas.
     // So we need to redraw the Julia image after any change to the canvas's logical size.
     // That's why we set width and height imperatively here, rather than using width and
     // height attributes in the <canvas ... /> jsx element above. The surplus-generated computations
     // for attributes don't give the needed control over timing, and lead to the canvas getting cleared
     // occasionally during resizing.
-    if (rect.canvasSizeLogicalPx.width()  !== null) canvas.width  = rect.canvasSizeLogicalPx.width()!;
-    if (rect.canvasSizeLogicalPx.height() !== null) canvas.height = rect.canvasSizeLogicalPx.height()!;
+    canvas.width  = canvasSizeLogicalPx.width;
+    canvas.height = canvasSizeLogicalPx.height;
+
+    const ctx = canvas.getContext('2d')!;
 
     S(() => {
         const
-            ctx = canvas.getContext('2d')!,
-            originOffsetPx = {
-                x: rect.originOffsetPx.x(),
-                y: rect.originOffsetPx.y()
+            originOffsetPx = rect.originOffsetPx.x() === null || rect.originOffsetPx.y() === null ? null : {
+                x: rect.originOffsetPx.x()!,
+                y: rect.originOffsetPx.y()!
             },
             canvasRect = rect.canvasRect();
 
-        if (originOffsetPx.x === null || originOffsetPx.y === null || !canvasRect) return;
+        if (!originOffsetPx || !canvasRect) return;
 
         for (let row = 0; row < canvasRect.widthChunks; row++) {
             for (let col = 0; col < canvasRect.heightChunks; col++) {
@@ -127,15 +145,124 @@ const rendersJuliaImage = (imageData : () => IBundle<ImageData | null>, rect : R
 
                 // Each canvas chunk gets its own computation that renders that chunk
                 S(() => {
-                    const _imageData = imageData().get(chunkId)();
+                    const imageData = app.imager.imageData().get(chunkId)();
 
-                    if (_imageData) ctx.putImageData(_imageData, topLeftCanvasCoords.x, topLeftCanvasCoords.y);
+                    if (imageData) ctx.putImageData(imageData, topLeftCanvasCoords.x, topLeftCanvasCoords.y);
                     else ctx.clearRect(topLeftCanvasCoords.x, topLeftCanvasCoords.y, ChunkSizePx.width, ChunkSizePx.height);
                 });
             }
         }
     });
 };
+
+// Specialized render method just for zooming out.
+//
+// This overcomes the perf limitations of renderAllChunks for this case.
+// The simpler approach would be to let CanvasDrafts's resolution move freely, w/o being constrained by app.canvasMgr.resolution,
+// and use renderAllChunks in all cases including zoom out.
+// That'd work functionally, but it'd have poor perf on zoom out.
+// The problem is that as you zoomed out, the resolution would get higher and higher, meaning we'd need more chunks to fill the canvas,
+// and thus renderAllChunks would do more and more work on each zoom frame.
+// What's worse, more and more of the canvas would be empty, so we'd be spending most of that time computing data for a blank canvas.
+// This is the polar opposite of the zoom in case, where the more you zoom in, the lower the resolution gets and thus the less work needed
+// to renderAllChunks.
+//
+// So instead, we cap the resolution. Then, to be able to use the model layer's existing imageData during zoom out,
+// this implementation down samples from that imageData to fill the shrinking populated
+// area of the canvas. This means the amount of work decreases the more you zoom out.
+const rendersOnZoomOut = (app : App, drafts : CanvasDrafts) => (canvas : HTMLCanvasElement, prevBuffer : ArrayBuffer | undefined) : ArrayBuffer | undefined => {
+    if (drafts.zoom() >= app.canvasMgr.zoom()) return;
+
+    const
+        { rect } = drafts,
+        canvasSizeLogicalPx = rect.canvasSizeLogicalPx.width() === null || rect.canvasSizeLogicalPx.height() === null ? null : {
+            width: rect.canvasSizeLogicalPx.width()!,
+            height: rect.canvasSizeLogicalPx.height()!
+        },
+        originOffsetPx = rect.originOffsetPx.x() === null || rect.originOffsetPx.y() === null ? null : {
+            x: rect.originOffsetPx.x()!,
+            y: rect.originOffsetPx.y()!
+        };
+
+    if (!canvasSizeLogicalPx || !originOffsetPx) return;
+
+    // Ditto rendersJuliaImage about setting canvas width and height
+    canvas.width  = canvasSizeLogicalPx.width;
+    canvas.height = canvasSizeLogicalPx.height;
+
+    const ctx = canvas.getContext('2d')!;
+
+    const
+        // We'll shrink the entire canvasRect into a smaller target based on draft zoom
+        // Ratio of full zoom to draft zoom, which we're assuming to be smaller.
+        fullToDraftZoom = app.canvasMgr.zoom() / drafts.zoom(),
+        targetSizePx = {
+            width:  Math.floor(canvasSizeLogicalPx.width  / fullToDraftZoom),
+            height: Math.floor(canvasSizeLogicalPx.height / fullToDraftZoom)
+        },
+        targetCoords = {
+            x: Math.round((canvasSizeLogicalPx.width  - targetSizePx.width ) / 2),
+            y: Math.round((canvasSizeLogicalPx.height - targetSizePx.height) / 2)
+        },
+        // Image data is 4 bytes per pixel
+        byteLength = targetSizePx.width * targetSizePx.height * 4,
+        // Re-use cached buffer if we have one
+        buffer = prevBuffer && prevBuffer.byteLength >= byteLength ? prevBuffer : new ArrayBuffer(byteLength),
+        targetImage = new ImageData(new Uint8ClampedArray(buffer, 0, byteLength), targetSizePx.width, targetSizePx.height);
+
+    // Avoid subscribing to the image data. We expect zoom out to be short-lived,
+    // and sampling avoids double renders in case you zoom out while the worker is still computing data.
+    S.sample(() => {
+        // Populate target image by down-sampling from chunk images
+        const
+            chunkId = { re: 0, im: 0 },
+            lastChunkId = { re: undefined as number | undefined, im: undefined as number | undefined };
+
+        // Cache fetched chunkImage and re-use as long as lastChunkId matches new chunkId.
+        // This is a crucial perf optimization, otherwise we get very bogged down looking up chunks in our DataBundle.
+        // The intuition is that we expect frequent runs of pixels that map to the same chunk.
+        let chunkImage = null as ImageData | null;
+
+        // Iterate target pixels. This means amount of work decreases as draft zoom decreases.
+        for (let i = 0; i < targetSizePx.width * targetSizePx.height; i++) {
+            const
+                // Add half a pixel so we're computing from the center of each pixel
+                rowPx = Math.floor(i / targetSizePx.width) + 0.5,
+                colPx = i % targetSizePx.width + 0.5,
+                // Identify the best source pixel for the given target pixel.
+                // source{Row|Col}Px -- coords of the source pixel relative to the origin
+                sourceRowPx = Math.round(fullToDraftZoom * (rowPx - targetSizePx.height / 2) + canvasSizeLogicalPx.height / 2 - originOffsetPx.y),
+                sourceColPx = Math.round(fullToDraftZoom * (colPx - targetSizePx.width  / 2) + canvasSizeLogicalPx.width  / 2 - originOffsetPx.x);
+
+            chunkId.re = Math.floor(sourceColPx / ChunkSizePx.width );
+            chunkId.im = Math.floor(sourceRowPx / ChunkSizePx.height);
+            chunkImage = chunkId.re === lastChunkId.re && chunkId.im === lastChunkId.im ? chunkImage : app.imager.imageData().get(chunkId)();
+            lastChunkId.re = chunkId.re;
+            lastChunkId.im = chunkId.im;
+
+            if (chunkImage) {
+                const
+                    rowOffset = sourceRowPx - chunkId.im * ChunkSizePx.height,
+                    colOffset = sourceColPx - chunkId.re * ChunkSizePx.width,
+                    bufferOffset = 4 * (rowOffset * ChunkSizePx.width + colOffset);
+
+                targetImage.data[4 * i]     = chunkImage.data[bufferOffset    ];
+                targetImage.data[4 * i + 1] = chunkImage.data[bufferOffset + 1];
+                targetImage.data[4 * i + 2] = chunkImage.data[bufferOffset + 2];
+                targetImage.data[4 * i + 3] = chunkImage.data[bufferOffset + 3];
+            } else {
+                // Set alpha to 0 to clear this pixel. Don't care about r,g, or b.
+                targetImage.data[4 * i + 3] = 0;
+            }
+        }
+    });
+
+    ctx.clearRect(0, 0, canvasSizeLogicalPx.width, canvasSizeLogicalPx.height);
+    ctx.putImageData(targetImage, targetCoords.x, targetCoords.y);
+
+    // Return buffer to cache for next zoom frame.
+    return buffer;
+}
 
 const isDraggable = (app : App, drafts : CanvasDrafts, panning : DataSignal<boolean>) => (canvas : HTMLCanvasElement) => {
     let lastClientX = 0, lastClientY = 0, timeout : number | undefined;
@@ -197,7 +324,10 @@ const
     ZOOM_SENSITIVITY_EXP = 0.8,
     // Threshold speed to count a gesture as intentional. We'll ignore below this.
     MIN_DELTA_PER_MS = 0.5,
+    // Duration of a zoom frame
     ZOOM_FRAME_RATE_MS = 10,
+    // Period of quiet before we commit zoom changes to the model layer.
+    // This MUST be larger than ZOOM_FRAME_RATE_MS.
     ZOOM_UPDATE_DELAY_MS = 100;
 
 const isZoomable = (drafts : CanvasDrafts) => (canvas : HTMLCanvasElement) => {
@@ -217,6 +347,8 @@ const isZoomable = (drafts : CanvasDrafts) => (canvas : HTMLCanvasElement) => {
             // Chunking wheel events into discrete "frames" helps smooth over timing differences btwn platforms/browsers/devices,
             // and also gives us more chance to distinguish intentional zooms from accidental "blips".
             if (frameTimeout === undefined) frameTimeout = setTimeout(onZoomFrame, ZOOM_FRAME_RATE_MS);
+            if (commitTimeout !== undefined) clearTimeout(commitTimeout);
+            commitTimeout = setTimeout(() => drafts.zoom.commit(), ZOOM_UPDATE_DELAY_MS);
         },
         onZoomFrame = () => {
             const
@@ -237,14 +369,6 @@ const isZoomable = (drafts : CanvasDrafts) => (canvas : HTMLCanvasElement) => {
                     scale = Math.pow(2 / (1 + Math.exp(-exp)), _delta <= 0 ? 1 : -1);
 
                 drafts.zoom(drafts.zoom() * scale);
-                // For reasons I don't yet understand, drafting the zoom and scheduling an async commit
-                // works great when zooming in, but ends up looking slow and jittery when zooming out.
-                // So for now, commit immediately when zooming out, meaning we'll reset image data and clear canvas.
-                if (scale < 1) drafts.zoom.commit();
-                else {
-                    if (commitTimeout !== undefined) clearTimeout(commitTimeout);
-                    commitTimeout = setTimeout(() => drafts.zoom.commit(), ZOOM_UPDATE_DELAY_MS);
-                }
             }
         };
 
