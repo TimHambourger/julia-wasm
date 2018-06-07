@@ -11,11 +11,12 @@ const
 // For now, thinking it's not worth it. Main thing we lose with a shared tsconfig is
 // that the compiler can't catch if we use a Window API in WebWorker or vice versa.
 const
+    prod = process.env.JULIA_WASM_ENV === 'production',
     SRC = path.resolve(__dirname, './src'),
     SHARED_SRC = path.resolve(SRC, './shared'),
     MAIN_SRC = path.resolve(SRC, './main'),
     WORKER_SRC = path.resolve(SRC, './worker'),
-    DIST = path.resolve(__dirname, '../dist');
+    DIST = path.resolve(__dirname, '../dist', prod ? 'release' : 'debug');
 
 module.exports = {
     entry: {
@@ -25,7 +26,7 @@ module.exports = {
     },
     output: {
         path: DIST,
-        filename: process.env.NODE_ENV === 'production' ? '[name].[chunkhash].js' : '[name].js',
+        filename: prod ? '[name].[chunkhash].js' : '[name].js',
         globalObject: 'this'
     },
     resolve: {
@@ -34,11 +35,12 @@ module.exports = {
         extensions: ['.ts', '.tsx', '.js' /* , '.wasm' */]
     },
 
-    // surplus-loader's sourcemaps have inaccurate line numbers, so for now,
-    // debugging through output JS
+    // surplus-loader's sourcemaps seem to have inaccurate line numbers, so disable source maps for now
     devtool: false,
 
-    mode: process.env.NODE_ENV === 'production' ? 'production' : 'development',
+    // TODO -- production mode breaks the app! Debugging into the minified code, I can see that <CanvasView /> gets called,
+    // but somehow it isn't getting added to the DOM. ???!!!
+    mode: prod && false ? 'production' : 'development',
 
     module: {
         rules: [
@@ -59,7 +61,7 @@ module.exports = {
 
     plugins: [
         new CleanWebpackPlugin(DIST, {
-            // Need to explicitly deleting files outside of webpack root, since our dist folder exists outside of webpack root
+            // Need to explicitly allow deleting files outside of webpack root, since our dist folder exists outside of webpack root
             allowExternal: true
         }),
         new HtmlWebpackPlugin({
@@ -68,7 +70,7 @@ module.exports = {
             inject: false
         }),
         new MiniCssExtractPlugin({
-            filename: process.env.NODE_ENV === 'production' ? '[name].[contenthash].css' : '[name].css'
+            filename: prod ? '[name].[contenthash].css' : '[name].css'
         })
     ]
 };

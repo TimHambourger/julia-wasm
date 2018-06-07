@@ -1,8 +1,8 @@
 import { IWorkerConfig } from '../shared/config';
 import { WorkerInstructionMsg, IWorkerInitMsg, IWorkerResetMsg, IAddJobsMsg, IChunkUpdateMsg } from '../shared/messages';
 import { MemoryPool } from '../shared/memoryPool';
-import { Buffer, Canvas, CanvasRect, EscapeTime, EscapeTimeRunner } from './wasm/julia_wasm';
-import * as rawWasm from './wasm/julia_wasm_bg';
+import { Buffer, Canvas, CanvasRect, EscapeTime, EscapeTimeRunner } from '../../wasm_output/julia_wasm';
+import * as rawWasm from '../../wasm_output/julia_wasm_bg';
 
 // Basically, a Rust Vec<u16> represented as both an opaque Buffer object for passing
 // into Rust methods and as a Uint16Array for reading in JS.

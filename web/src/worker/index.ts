@@ -4,7 +4,7 @@ import { MemoryPool } from '../shared/memoryPool';
 // This is a workaround for the fact that webpack's bult-in wasm support currently can't import wasm into a
 // web worker (falls at runtime due to use of document APIs).
 import { WorkerCore } from './workerCore';
-import { booted } from './wasm/julia_wasm_bg';
+import { booted } from '../../wasm_output/julia_wasm_bg';
 
 let resolveWorkerInitMsg = null as ((msg : IWorkerInitMsg) => void) | null,
     initialInstructions = [] as WorkerInstructionMsg[],
