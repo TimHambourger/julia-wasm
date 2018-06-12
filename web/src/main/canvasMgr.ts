@@ -61,8 +61,9 @@ export function CanvasMgr(opts : CanvasMgrOptions) {
         },
         // Bottom right - top left in complex coordinates for any given chunk
         chunkDelta = {
-            re: () => ChunkSizePx.width  / zoom() / resolution(),
-            im: () => ChunkSizePx.height / zoom() / resolution()
+            // Conventional orientation -- real axis increases from left to right, imaginary axis decreases from top to bottom
+            re: () =>  ChunkSizePx.width  / zoom() / resolution(),
+            im: () => -ChunkSizePx.height / zoom() / resolution()
         },
         canvasConfig = S<ICanvasConfig>(() => ({
             chunkDelta: {

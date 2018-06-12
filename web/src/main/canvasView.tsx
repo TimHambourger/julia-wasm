@@ -46,7 +46,7 @@ const CanvasDrafts = (app : App) => {
         // NOTE: We'd expect to get the same answer if we instead used ChunkSizePx.height together with chunkDelta.im.
         // Also NOTE: We constrain the resolution to be no higher than the model layer's resolution. This is part of our
         // perf fix for the zoom out case. See rendersOnZoomOut.
-        resolution = () => Math.min(ChunkSizePx.width  / zoom() / app.canvasMgr.chunkDelta.re(), app.canvasMgr.resolution()),
+        resolution = () => Math.min(Math.abs(ChunkSizePx.width  / zoom() / app.canvasMgr.chunkDelta.re()), app.canvasMgr.resolution()),
         rect = RectCalculations({
             origin: app.canvasMgr.origin,
             chunkDelta: app.canvasMgr.chunkDelta,
