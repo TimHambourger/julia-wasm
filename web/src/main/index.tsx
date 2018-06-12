@@ -25,7 +25,7 @@ const
         S(() => hash('#?' + formatQueryString(app.currentOpts())));
         S.on(query, () => app.updateOpts(parseQueryString(query())));
 
-        return <AppView app={app} mounted={mounted} />
+        return <AppView app={app} mounted={mounted} />;
     });
 document.querySelector('#app')!.appendChild(view);
 mounted(true);

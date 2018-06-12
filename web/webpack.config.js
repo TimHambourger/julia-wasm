@@ -38,9 +38,23 @@ module.exports = {
     // surplus-loader's sourcemaps seem to have inaccurate line numbers, so disable source maps for now
     devtool: false,
 
-    // TODO -- production mode breaks the app! Debugging into the minified code, I can see that <CanvasView /> gets called,
-    // but somehow it isn't getting added to the DOM. ???!!!
+    // TEMPORARY -- Disable production mode.
+    // It currently breaks the app! If you turn it on, <CanvasView> element gets constructed but never gets
+    // added to the DOM.
+    // It turns out this only reproes if we target ES6 and is due to a bug in uglify-es, which is a dependency
+    // for uglify-webpack-plugin. Uglify-es was recently deprecated and forked as terser, which is maintained (for now).
+    // Terser does seem to fix the bug (I compared against uglify-es on a minimal repro).
+    // And it sounds like uglify-webpack-plugin is in the process of switching to terser.
+    // So waiting for that switchover to happen....
+    // See
+    // https://github.com/webpack-contrib/uglifyjs-webpack-plugin/issues/262
+    // https://github.com/fabiosantoscode/terser
+    // https://github.com/mishoo/UglifyJS2/issues/2908#issuecomment-367686007
     mode: prod && false ? 'production' : 'development',
+
+    optimization: {
+        minimize: false
+    },
 
     module: {
         rules: [
