@@ -1,6 +1,7 @@
 import S, { DataSignal } from 's-js';
 import * as Surplus from 'surplus';
 import * as cx from 'classnames';
+import { IComplex } from '../shared/IComplex';
 import { ICanvasRect } from '../shared/config';
 import { IBundle } from './lib/dataBundle';
 import { draftSignal, DraftSignal } from './lib/draftSignal';
@@ -19,7 +20,7 @@ export const CanvasView = ({ app, mounted } : { app : App, mounted : () => boole
             fn1={rendersJuliaImage(app, drafts)}
             fn2={rendersOnZoomOut(app, drafts) as <U>(el : HTMLCanvasElement, prevBuffer : U | undefined) => any}
             fn3={isDraggable(app, drafts, panning)}
-            fn4={isZoomable(drafts)}
+            fn4={isZoomable(app, drafts)}
         />
     );
 };
@@ -44,9 +45,7 @@ const CanvasDrafts = (app : App) => {
         },
         // Treat resolution as a function of our draft zoom and the model's chunkDelta.
         // NOTE: We'd expect to get the same answer if we instead used ChunkSizePx.height together with chunkDelta.im.
-        // Also NOTE: We constrain the resolution to be no higher than the model layer's resolution. This is part of our
-        // perf fix for the zoom out case. See rendersOnZoomOut.
-        resolution = () => Math.min(Math.abs(ChunkSizePx.width  / zoom() / app.canvasMgr.chunkDelta.re()), app.canvasMgr.resolution()),
+        resolution = () => Math.abs(ChunkSizePx.width  / zoom() / app.canvasMgr.chunkDelta.re()),
         rect = RectCalculations({
             origin: app.canvasMgr.origin,
             chunkDelta: app.canvasMgr.chunkDelta,
@@ -157,24 +156,28 @@ const rendersJuliaImage = (app : App, drafts : CanvasDrafts) => (canvas : HTMLCa
 
 // Specialized render method just for zooming out.
 //
-// This overcomes the perf limitations of renderAllChunks for this case.
-// The simpler approach would be to let CanvasDrafts's resolution move freely, w/o being constrained by app.canvasMgr.resolution,
-// and use renderAllChunks in all cases including zoom out.
+// This overcomes the perf limitations of rendersJuliaImage for this case.
+// The simpler approach would be to use rendersJuliaImage in all cases including zoom out.
 // That'd work functionally, but it'd have poor perf on zoom out.
 // The problem is that as you zoomed out, the resolution would get higher and higher, meaning we'd need more chunks to fill the canvas,
-// and thus renderAllChunks would do more and more work on each zoom frame.
+// and thus rendersJuliaImage would do more and more work on each zoom frame.
 // What's worse, more and more of the canvas would be empty, so we'd be spending most of that time computing data for a blank canvas.
 // This is the polar opposite of the zoom in case, where the more you zoom in, the lower the resolution gets and thus the less work needed
-// to renderAllChunks.
+// by rendersJuliaImage.
 //
-// So instead, we cap the resolution. Then, to be able to use the model layer's existing imageData during zoom out,
+// So instead, we use the model layer to determine logical px, since the model layer has a stable resolution.
+// Then, to be able to use the model layer's existing imageData but still account for zooming out,
 // this implementation down samples from that imageData to fill the shrinking populated
 // area of the canvas. This means the amount of work decreases the more you zoom out.
 const rendersOnZoomOut = (app : App, drafts : CanvasDrafts) => (canvas : HTMLCanvasElement, prevBuffer : ArrayBuffer | undefined) : ArrayBuffer | undefined => {
     if (drafts.zoom() >= app.canvasMgr.zoom()) return;
 
     const
-        { rect } = drafts,
+        // NOTE: Using the model layer to determine canvas px.
+        // We expect the draft layer to have higher resolution at this point,
+        // so choosing the lower resolution is a perf optimization b/c it means we don't have
+        // as many pixels to compute.
+        { rect, chunkDelta } = app.canvasMgr,
         canvasSizeLogicalPx = rect.canvasSizeLogicalPx.width() === null || rect.canvasSizeLogicalPx.height() === null ? null : {
             width: rect.canvasSizeLogicalPx.width()!,
             height: rect.canvasSizeLogicalPx.height()!
@@ -196,13 +199,20 @@ const rendersOnZoomOut = (app : App, drafts : CanvasDrafts) => (canvas : HTMLCan
         // We'll shrink the entire canvasRect into a smaller target based on draft zoom
         // Ratio of full zoom to draft zoom, which we're assuming to be smaller.
         fullToDraftZoom = app.canvasMgr.zoom() / drafts.zoom(),
+        draftToFullZoom = 1 / fullToDraftZoom,
         targetSizePx = {
-            width:  Math.floor(canvasSizeLogicalPx.width  / fullToDraftZoom),
-            height: Math.floor(canvasSizeLogicalPx.height / fullToDraftZoom)
+            width:  Math.floor(canvasSizeLogicalPx.width  * draftToFullZoom),
+            height: Math.floor(canvasSizeLogicalPx.height * draftToFullZoom)
         },
+        // Point about which zoom is centered, in canvas px, reverse engineered by comparing the model layer's center with the draft center.
+        zoomCtr = {
+            x: (app.canvasMgr.center.re() - drafts.center.re()) * draftToFullZoom / (1 - draftToFullZoom) / chunkDelta.re() * ChunkSizePx.width  + canvasSizeLogicalPx.width  / 2,
+            y: (app.canvasMgr.center.im() - drafts.center.im()) * draftToFullZoom / (1 - draftToFullZoom) / chunkDelta.im() * ChunkSizePx.height + canvasSizeLogicalPx.height / 2
+        },
+        // Top left of target area in canvas px
         targetCoords = {
-            x: Math.round((canvasSizeLogicalPx.width  - targetSizePx.width ) / 2),
-            y: Math.round((canvasSizeLogicalPx.height - targetSizePx.height) / 2)
+            x: Math.round(zoomCtr.x * (1 - draftToFullZoom)),
+            y: Math.round(zoomCtr.y * (1 - draftToFullZoom))
         },
         // Image data is 4 bytes per pixel
         byteLength = targetSizePx.width * targetSizePx.height * 4,
@@ -231,8 +241,8 @@ const rendersOnZoomOut = (app : App, drafts : CanvasDrafts) => (canvas : HTMLCan
                 colPx = i % targetSizePx.width + 0.5,
                 // Identify the best source pixel for the given target pixel.
                 // source{Row|Col}Px -- coords of the source pixel relative to the origin
-                sourceRowPx = Math.round(fullToDraftZoom * (rowPx - targetSizePx.height / 2) + canvasSizeLogicalPx.height / 2 - originOffsetPx.y),
-                sourceColPx = Math.round(fullToDraftZoom * (colPx - targetSizePx.width  / 2) + canvasSizeLogicalPx.width  / 2 - originOffsetPx.x);
+                sourceRowPx = Math.round(fullToDraftZoom * (rowPx + targetCoords.y - zoomCtr.y) + zoomCtr.y - originOffsetPx.y - 0.5),
+                sourceColPx = Math.round(fullToDraftZoom * (colPx + targetCoords.x - zoomCtr.x) + zoomCtr.x - originOffsetPx.x - 0.5);
 
             chunkId.re = Math.floor(sourceColPx / ChunkSizePx.width );
             chunkId.im = Math.floor(sourceRowPx / ChunkSizePx.height);
@@ -246,7 +256,7 @@ const rendersOnZoomOut = (app : App, drafts : CanvasDrafts) => (canvas : HTMLCan
                     colOffset = sourceColPx - chunkId.re * ChunkSizePx.width,
                     bufferOffset = 4 * (rowOffset * ChunkSizePx.width + colOffset);
 
-                targetImage.data[4 * i]     = chunkImage.data[bufferOffset    ];
+                targetImage.data[4 * i    ] = chunkImage.data[bufferOffset    ];
                 targetImage.data[4 * i + 1] = chunkImage.data[bufferOffset + 1];
                 targetImage.data[4 * i + 2] = chunkImage.data[bufferOffset + 2];
                 targetImage.data[4 * i + 3] = chunkImage.data[bufferOffset + 3];
@@ -330,8 +340,10 @@ const
     // This MUST be larger than ZOOM_FRAME_RATE_MS.
     ZOOM_UPDATE_DELAY_MS = 100;
 
-const isZoomable = (drafts : CanvasDrafts) => (canvas : HTMLCanvasElement) => {
+const isZoomable = (app : App, drafts : CanvasDrafts) => (canvas : HTMLCanvasElement) => {
     let delta = 0,
+        // The center for the current zoom in complex coords
+        zoomCtr : IComplex | undefined,
         frameTimeout : number | undefined,
         commitTimeout : number | undefined;
 
@@ -344,11 +356,26 @@ const isZoomable = (drafts : CanvasDrafts) => (canvas : HTMLCanvasElement) => {
             // TODO: DOM_DELTA_PAGE? Sounds like this is Windows only and depends on mouse settings.
             delta += e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY * PX_PER_DOM_DELTA_LINE : e.deltaY;
 
+            if (zoomCtr === undefined) {
+                // Center zoom around initial location of wheel gesture.
+                const
+                    rect = canvas.getBoundingClientRect(),
+                    // Location of zoom relative to center of canvas in browser px
+                    zoomLocX = e.clientX - (rect.left + rect.width  / 2),
+                    zoomLocY = e.clientY - (rect.top  + rect.height / 2);
+                // Compute complex coords of zoom location from known complex coords of center of canvas
+                // Recall zoom measures browser px per complex unit.
+                zoomCtr = {
+                    re: drafts.center.re() + Math.sign(app.canvasMgr.chunkDelta.re()) * zoomLocX / drafts.zoom(),
+                    im: drafts.center.im() + Math.sign(app.canvasMgr.chunkDelta.im()) * zoomLocY / drafts.zoom()
+                };
+            }
+
             // Chunking wheel events into discrete "frames" helps smooth over timing differences btwn platforms/browsers/devices,
             // and also gives us more chance to distinguish intentional zooms from accidental "blips".
             if (frameTimeout === undefined) frameTimeout = setTimeout(onZoomFrame, ZOOM_FRAME_RATE_MS);
             if (commitTimeout !== undefined) clearTimeout(commitTimeout);
-            commitTimeout = setTimeout(() => drafts.zoom.commit(), ZOOM_UPDATE_DELAY_MS);
+            commitTimeout = setTimeout(commit, ZOOM_UPDATE_DELAY_MS);
         },
         onZoomFrame = () => {
             const
@@ -368,9 +395,20 @@ const isZoomable = (drafts : CanvasDrafts) => (canvas : HTMLCanvasElement) => {
                     exp = Math.pow(Math.abs(ZOOM_SENSITIVITY * _delta), ZOOM_SENSITIVITY_EXP),
                     scale = Math.pow(2 / (1 + Math.exp(-exp)), _delta <= 0 ? 1 : -1);
 
-                drafts.zoom(drafts.zoom() * scale);
+                S.freeze(() => {
+                    drafts.zoom(drafts.zoom() * scale);
+                    // Re-center canvas so that zoom center stays in same location proportional to location and dimensions of the canvas.
+                    drafts.center.re((1 - 1 / scale) * zoomCtr!.re + drafts.center.re() / scale);
+                    drafts.center.im((1 - 1 / scale) * zoomCtr!.im + drafts.center.im() / scale);
+                });
             }
-        };
+        },
+        commit = () => S.freeze(() => {
+            zoomCtr = undefined;
+            drafts.zoom.commit();
+            drafts.center.re.commit();
+            drafts.center.im.commit();
+        });
 
     canvas.addEventListener('wheel', onMouseWheel);
     S.cleanup(() => canvas.removeEventListener('wheel', onMouseWheel));
