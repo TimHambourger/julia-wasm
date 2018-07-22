@@ -22,9 +22,3 @@ WASM_BINDGEN_COMMAND="wasm-bindgen --browser target/wasm32-unknown-unknown/$CARG
 
 echo $WASM_BINDGEN_COMMAND
 ${WASM_BINDGEN_COMMAND}
-
-# Workaround for webpack issue dynamically importing wasm into web worker
-WASM_2_ES6_JS_COMMAND="wasm2es6js --typescript --base64 --output $WASM_OUTPUT/julia_wasm_bg.js $WASM_OUTPUT/julia_wasm_bg.wasm"
-
-echo $WASM_2_ES6_JS_COMMAND
-${WASM_2_ES6_JS_COMMAND}

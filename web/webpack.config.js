@@ -2,7 +2,8 @@ const
     path = require('path'),
     HtmlWebpackPlugin = require('html-webpack-plugin'),
     CleanWebpackPlugin = require('clean-webpack-plugin'),
-    MiniCssExtractPlugin = require('mini-css-extract-plugin');
+    MiniCssExtractPlugin = require('mini-css-extract-plugin'),
+    UglifyJsPlugin = require('uglifyjs-webpack-plugin');
 
 // TODO: Whether to try to split into two tsconfig.json's...
 // There's complexity on both the webpack and vscode side.
@@ -19,6 +20,10 @@ const
     DIST = path.resolve(__dirname, '../dist', prod ? 'release' : 'debug');
 
 module.exports = {
+    // Workaround until target: 'universal' is implemented (https://github.com/webpack/webpack/issues/6525).
+    // Needed so that webpack uses a webworker-compatible runtime for dynamic imports in the worker entry.
+    // Note that this runtime is NOT main-thread compatible. So this only works b/c our main entry does no dynamic imports.
+    target: 'webworker',
     entry: {
         main: path.resolve(MAIN_SRC, './index.tsx'),
         worker: path.resolve(WORKER_SRC, './index.ts'),
@@ -27,41 +32,38 @@ module.exports = {
     output: {
         path: DIST,
         filename: prod ? '[name].[chunkhash].js' : '[name].js',
-        globalObject: 'this'
     },
     resolve: {
-        // For now, don't need wasm extensions b/c we're using wasm-bindgen's wasm2es6js instead of
-        // webpack b/c webpack's wasm support doesn't work from web workers.
-        extensions: ['.ts', '.tsx', '.js' /* , '.wasm' */]
+        extensions: ['.ts', '.tsx', '.js', '.wasm']
     },
 
-    // surplus-loader's sourcemaps seem to have inaccurate line numbers, so disable source maps for now
-    devtool: false,
+    devtool: 'source-map',
 
-    // TEMPORARY -- Disable production mode.
-    // It currently breaks the app! If you turn it on, <CanvasView> element gets constructed but never gets
-    // added to the DOM.
-    // It turns out this only reproes if we target ES6 and is due to a bug in uglify-es, which is a dependency
-    // for uglify-webpack-plugin. Uglify-es was recently deprecated and forked as terser, which is maintained (for now).
-    // Terser does seem to fix the bug (I compared against uglify-es on a minimal repro).
-    // And it sounds like uglify-webpack-plugin is in the process of switching to terser.
-    // So waiting for that switchover to happen....
-    // See
-    // https://github.com/webpack-contrib/uglifyjs-webpack-plugin/issues/262
-    // https://github.com/fabiosantoscode/terser
-    // https://github.com/mishoo/UglifyJS2/issues/2908#issuecomment-367686007
-    mode: prod && false ? 'production' : 'development',
+    mode: prod ? 'production' : 'development',
 
     optimization: {
-        minimize: false
+        // Temporary workaround for uglify-es bug involving incorrect inlining breaking variable scoping.
+        // Should be unneeded once https://github.com/webpack-contrib/uglifyjs-webpack-plugin/pull/296 is merged.
+        minimizer: [
+            new UglifyJsPlugin({
+                sourceMap: true,
+                uglifyOptions: {
+                    compress: {
+                        inline: 1, // default is 3, which causes errors
+                    },
+                }
+            }),
+        ],
+        // Temporary workaround for https://github.com/xtuc/webassemblyjs/issues/407#issuecomment-403191947
+        // Can revert once https://github.com/webpack/webpack/pull/7732 is merged and published.
+        // This workaround works by disabling the FlagDependencyUsagePlugin.
+        usedExports: false
     },
 
     module: {
         rules: [
-            {
-                test: /\.tsx?$/,
-                loader: 'surplus-loader!ts-loader'
-            },
+            { test: /\.ts$/, loader: 'ts-loader' },
+            { test: /\.tsx$/, loader: 'surplus-loader!ts-loader' },
             {
                 test: /\.scss$/,
                 use: [

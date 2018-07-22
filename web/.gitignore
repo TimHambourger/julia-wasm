@@ -1,2 +1,3 @@
 node_modules/
-wasm_output/
+wasm_output/**
+!wasm_output/julia_wasm_bg.d.ts

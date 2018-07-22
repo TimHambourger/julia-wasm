@@ -9,8 +9,14 @@ Explore [Julia sets](https://en.wikipedia.org/wiki/Julia_set) in the browser. Po
 * Refine parameters and colors.
 * Iteration performed by Web Assembly running in a Web Worker.
 
-## How Do I View This?
-This repository includes a /dist/release/ folder. Clone or download this repo. Then open /dist/release/index.html directly from your filesystem, or else serve /dist/release/ over HTTP.
+## How To Host Locally
+This repository includes a /dist/release/ directory. Serve /dist/release/ over HTTP.
+
+Note: You'll need to use a static file server that supports application/wasm as a Content-Type header. I recommend using [serve](https://www.npmjs.com/package/serve):
+```
+> cd dist/release/
+> serve -l 8080
+```
 
 ## Browser Support
 For sure modern Chrome and Firefox. Probably wider than that. Better support matrix coming soon...

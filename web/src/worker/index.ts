@@ -1,25 +1,26 @@
 import { MessageToWorker, IWorkerInitMsg, WorkerInstructionMsg, IStartupFailureMsg } from '../shared/messages';
 import { MemoryPool } from '../shared/memoryPool';
-// Import WorkerCore synchronously, but we won't actually construct one until we make sure our wasm is booted.
-// This is a workaround for the fact that webpack's bult-in wasm support currently can't import wasm into a
-// web worker (falls at runtime due to use of document APIs).
-import { WorkerCore } from './workerCore';
-import { booted } from '../../wasm_output/julia_wasm_bg';
+// IMPORTANT: Only importing the WorkerCoreType synchronously.
+// This is a type-only import that will get removed by typescript before processing by webpack.
+// We import that the actual WorkerCore class constructor via a dynamic import below.
+// This is b/c currently webpack can only import wasm in dependency graphs rooted in a dynamic import.
+import { WorkerCoreType } from './workerCore';
 
 let resolveWorkerInitMsg = null as ((msg : IWorkerInitMsg) => void) | null,
     initialInstructions = [] as WorkerInstructionMsg[],
-    workerCore = null as WorkerCore | null;
+    workerCore = null as WorkerCoreType | null;
 
 // Put bootstrapping code behind Promises.
 // The goal is to get enough info to construct a WorkerCore, which then
 // takes over processing.
 const
     getWorkerInitMsg = new Promise<IWorkerInitMsg>(resolve => resolveWorkerInitMsg = resolve),
+    // Import the workerCore module async/dynamically. This is handled by webpack.
+    importWorkerCore = import(/* webpackChunkName: "workerCore" */ './workerCore'),
     initWorkerCore = (async () => {
-        const initMsg = await getWorkerInitMsg;
-
-        // Ensure wasm is booted before constructing workerCore.
-        await booted;
+        const
+            WorkerCore = (await importWorkerCore).WorkerCore,
+            initMsg = await getWorkerInitMsg;
 
         workerCore = new WorkerCore(initMsg);
         initialInstructions.forEach(msg => workerCore!.onmessage(msg));

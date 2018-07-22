@@ -11,6 +11,10 @@ interface OutputBuffer {
     view : Uint16Array;
 }
 
+// With current webpack constraints, it's important that index.ts only import
+// WorkerCore as a type, not as a value. To get a handle on the WorkerCore class
+// constructor, index.ts must use an async import(...).
+export type WorkerCoreType = InstanceType<typeof WorkerCore>;
 export class WorkerCore {
     private readonly workerConfig : IWorkerConfig;
     private readonly pool : MemoryPool;
