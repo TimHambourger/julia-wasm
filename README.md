@@ -3,6 +3,8 @@
 # Julia WASM
 Explore [Julia sets](https://en.wikipedia.org/wiki/Julia_set) in the browser. Powered by Rust, WebAssembly, and [Surplus](https://github.com/adamhaile/surplus).
 
+[View live](https://rawgit.com/TimHambourger/julia-wasm/master/dist/release/index.html)
+
 ## Features
 * Pan, zoom, resize.
 * Iterate on `z = z^2 + c` for any c.
