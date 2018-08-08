@@ -3,7 +3,7 @@ const
     HtmlWebpackPlugin = require('html-webpack-plugin'),
     CleanWebpackPlugin = require('clean-webpack-plugin'),
     MiniCssExtractPlugin = require('mini-css-extract-plugin'),
-    UglifyJsPlugin = require('uglifyjs-webpack-plugin');
+    TerserPlugin = require('terser-webpack-plugin');
 
 // TODO: Whether to try to split into two tsconfig.json's...
 // There's complexity on both the webpack and vscode side.
@@ -42,18 +42,17 @@ module.exports = {
     mode: prod ? 'production' : 'development',
 
     optimization: {
-        // Temporary workaround for uglify-es bug involving incorrect inlining breaking variable scoping.
-        // Should be unneeded once https://github.com/webpack-contrib/uglifyjs-webpack-plugin/pull/296 is merged.
-        minimizer: [
-            new UglifyJsPlugin({
-                sourceMap: true,
-                uglifyOptions: {
-                    compress: {
-                        inline: 1, // default is 3, which causes errors
-                    },
-                }
-            }),
-        ],
+        // Using terser over default of uglifyjs for better ES6 support.
+        // I've run into issues w/ uglifyjs in the past, particularly around incorrect inlining breaking variable scoping.
+        // As of last check, I don't see that particular bug anymore. But uglifyjs ES6 support is no longer officially
+        // maintained, so still sticking with terser.
+        // For fuller history, see:
+        // https://github.com/webpack-contrib/uglifyjs-webpack-plugin/pull/296
+        // https://github.com/webpack-contrib/uglifyjs-webpack-plugin/issues/262
+        minimizer: [new TerserPlugin({
+            sourceMap: true,
+            parallel: true
+        })],
         // Temporary workaround for https://github.com/xtuc/webassemblyjs/issues/407#issuecomment-403191947
         // Can revert once https://github.com/webpack/webpack/pull/7732 is merged and published.
         // This workaround works by disabling the FlagDependencyUsagePlugin.
