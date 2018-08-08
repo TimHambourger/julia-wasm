@@ -1,5 +1,4 @@
 import S from 's-js';
-import { IComplex } from '../shared/IComplex';
 import { IEscapeTimeConfig, ICanvasConfig, ICanvasRect } from '../shared/config';
 import { IWorkerInitMsg, IWorkerResetMsg, IAddJobsMsg, MessageToMain } from '../shared/messages';
 import { MemoryPool } from '../shared/memoryPool';

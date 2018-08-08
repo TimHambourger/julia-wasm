@@ -2,8 +2,6 @@ import S, { DataSignal } from 's-js';
 import * as Surplus from 'surplus';
 import * as cx from 'classnames';
 import { IComplex } from '../shared/IComplex';
-import { ICanvasRect } from '../shared/config';
-import { IBundle } from './lib/dataBundle';
 import { draftSignal, DraftSignal } from './lib/draftSignal';
 import { ChunkSizePx, RectCalculations } from './canvasMgr';
 import { App } from './app';

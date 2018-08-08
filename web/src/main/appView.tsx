@@ -1,4 +1,3 @@
-import S from 's-js';
 import * as Surplus from 'surplus';
 import { App } from './app';
 import { SettingsView } from './settingsView';

@@ -1,7 +1,3 @@
-import { IComplex } from '../shared/IComplex';
-import { CanvasMgrOptions } from './canvasMgr';
-import { EscapeTimeRunnerOptions } from './runner';
-import { ImagerOptions } from './imager';
 import { RGB } from './colorHandling/rgb';
 import { DeepPartial, AppOptions } from './app';
 

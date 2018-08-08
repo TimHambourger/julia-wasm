@@ -1,4 +1,3 @@
-import S from 's-js';
 import * as Surplus from 'surplus';
 import { RGB } from './colorHandling/rgb';
 import { App } from './app';

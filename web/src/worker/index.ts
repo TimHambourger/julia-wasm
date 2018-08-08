@@ -1,5 +1,4 @@
 import { MessageToWorker, IWorkerInitMsg, WorkerInstructionMsg, IStartupFailureMsg } from '../shared/messages';
-import { MemoryPool } from '../shared/memoryPool';
 // IMPORTANT: Only importing the WorkerCoreType synchronously.
 // This is a type-only import that will get removed by typescript before processing by webpack.
 // We import that the actual WorkerCore class constructor via a dynamic import below.
