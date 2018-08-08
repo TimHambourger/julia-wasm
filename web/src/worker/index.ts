@@ -1,7 +1,7 @@
 import { MessageToWorker, IWorkerInitMsg, WorkerInstructionMsg, IStartupFailureMsg } from '../shared/messages';
 // IMPORTANT: Only importing the WorkerCoreType synchronously.
 // This is a type-only import that will get removed by typescript before processing by webpack.
-// We import that the actual WorkerCore class constructor via a dynamic import below.
+// We import the actual WorkerCore class constructor via a dynamic import below.
 // This is b/c currently webpack can only import wasm in dependency graphs rooted in a dynamic import.
 import { WorkerCoreType } from './workerCore';
 
