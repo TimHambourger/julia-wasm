@@ -14,6 +14,7 @@
         input, select {
             @extend %settings-box-border;
             padding: 4px;
+            width: 100%;
         }
 
         select {

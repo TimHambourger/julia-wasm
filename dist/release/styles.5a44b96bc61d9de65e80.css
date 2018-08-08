@@ -35,7 +35,8 @@ body {
   .settings .setting {
     margin: 5px 0; }
     .settings .setting input, .settings .setting select {
-      padding: 4px; }
+      padding: 4px;
+      width: 100%; }
     .settings .setting select {
       height: 25px; }
   .settings .setting-label {
@@ -56,4 +57,4 @@ body {
     width: 30px; }
 
 
-/*# sourceMappingURL=styles.f97f992d029e4aa430ab.css.map*/
+/*# sourceMappingURL=styles.5a44b96bc61d9de65e80.css.map*/
